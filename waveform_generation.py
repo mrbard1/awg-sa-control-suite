@@ -262,6 +262,85 @@ def _sine_comb_from_user(
     return y
 
 
+def _as_list(x) -> List:
+    if x is None:
+        return []
+    if isinstance(x, (list, tuple, np.ndarray)):
+        return list(x)
+    return [x]
+
+
+def _scalar_or_list(values: List):
+    if len(values) == 1:
+        return values[0]
+    return values
+
+
+def _effective_sine_freqs(freqs: List[float], Fs: float, N: int) -> (List[float], List[int]):
+    f_effs: List[float] = []
+    ncycles: List[int] = []
+    for f_req in freqs:
+        if f_req <= 0:
+            f_effs.append(0.0)
+            ncycles.append(0)
+            continue
+        ncy = max(1, int(round(f_req * N / Fs)))
+        f_eff = (ncy * Fs) / N
+        f_effs.append(float(f_eff))
+        ncycles.append(int(ncy))
+    return f_effs, ncycles
+
+
+def _merge_sine_awg_meta(
+    awg: Optional[dict],
+    f_req: List[float],
+    f_eff: List[float],
+    ncycles: List[int],
+    Fs: float,
+    N: int,
+) -> dict:
+    awg_meta = dict(awg or {})
+    awg_meta.update({
+        "f_req": _scalar_or_list(f_req),
+        "f_eff": _scalar_or_list(f_eff),
+        "Ncycles": _scalar_or_list(ncycles),
+        "Fs": float(Fs),
+        "N": int(N),
+    })
+    return awg_meta
+
+
+def _sine_params_with_effective_freqs(params: Dict, Fs: float, N: int) -> (Dict, List[float], List[float], List[int]):
+    freqs = _as_list(params.get("frequencies", []))
+    f_effs, ncycles = _effective_sine_freqs(freqs, Fs, N)
+    params_eff = dict(params)
+    params_eff["frequencies"] = f_effs
+    return params_eff, freqs, f_effs, ncycles
+
+
+def _generate_sine_bundle_with_N(
+    selector: str,
+    Fs: float,
+    N: int,
+    preview: bool,
+    params: Optional[Dict] = None,
+) -> WaveBundle:
+    if params is None:
+        try:
+            func_name = f"sine_combination_waveform{selector[4:]}"
+            func = getattr(USER_main, func_name)
+        except AttributeError:
+            raise ValueError(f"Unknown sine selector: {selector}")
+        params = func()
+    params_eff, freqs, f_effs, ncycles = _sine_params_with_effective_freqs(params, Fs, N)
+    y = _sine_comb_from_user(params_eff, Fs, N, preview)
+    awg_meta = _merge_sine_awg_meta(params.get("awg", None), freqs, f_effs, ncycles, Fs, N)
+    if preview:
+        if freqs:
+            print(f"{selector} f_req={_scalar_or_list(freqs)} f_eff={_scalar_or_list(f_effs)} N={N} Fs={Fs}")
+    return WaveBundle(samples=y, awg=awg_meta)
+
+
 def _sine_segment_length_from_params(
     params: Dict,
     Fs: float,
@@ -311,16 +390,14 @@ def _generate_single_bundle(
 
     # sines
     if selector.startswith("sine"):
-        try:
-            func_name = f"sine_combination_waveform{selector[4:]}"
-            func = getattr(USER_main, func_name)
-        except AttributeError:
+        func_name = f"sine_combination_waveform{selector[4:]}"
+        func = getattr(USER_main, func_name, None)
+        if func is None:
             raise ValueError(f"Unknown sine selector: {selector}")
 
         params = func()
         N = _sine_segment_length_from_params(params, Fs, granularity)
-        y = _sine_comb_from_user(params, Fs, N, preview)
-        return WaveBundle(samples=y, awg=params.get("awg", None))
+        return _generate_sine_bundle_with_N(selector, Fs, N, preview, params=params)
 
 
     # custom user function
@@ -357,7 +434,7 @@ def _generate_single_bundle(
             except Exception:
                 pass
 
-        return WaveBundle(samples=y_long, awg=params.get("awg", None))
+        return WaveBundle(samples=y_long, awg=None)
 
 
     # noise only
@@ -400,7 +477,7 @@ def _generate_single_bundle(
             except Exception:
                 pass
 
-        return WaveBundle(samples=y_proc, awg=params.get("awg", None))
+        return WaveBundle(samples=y_proc, awg=None)
 
     # unkown waveform selector
     raise ValueError(f"Unsupported selector '{selector}'")
@@ -438,6 +515,9 @@ def _generate_mixed_bundle(
         raw_sine = None
         raw_noise = None
         proc_noise = None
+        f_req_all: List[float] = []
+        f_eff_all: List[float] = []
+        ncycles_all: List[int] = []
 
         for name in parts:
             gain = getattr(USER_main, "component_gains", {}).get(name, 1.0)
@@ -461,6 +541,18 @@ def _generate_mixed_bundle(
                 #proc_noise = force_noise_legacy_safe(proc_noise, headroom=0.9)
                 
                 acc += gain * proc_noise
+            elif name.startswith("sine"):
+                single = _generate_sine_bundle_with_N(name, Fs, N, False)
+                x = np.asarray(single.samples, dtype=np.float64)
+                if x.size == 0:
+                    continue
+                raw_sine = x.copy()
+                acc += gain * x
+
+                if single.awg:
+                    f_req_all.extend(_as_list(single.awg.get("f_req")))
+                    f_eff_all.extend(_as_list(single.awg.get("f_eff")))
+                    ncycles_all.extend(_as_list(single.awg.get("Ncycles")))
             else:
                 single = _generate_single_bundle(name, Fs, granularity, False, segment_length_ms, ch_index)
                 x = np.asarray(single.samples, dtype=np.float64)
@@ -506,24 +598,52 @@ def _generate_mixed_bundle(
             except Exception:
                 pass
 
-        return WaveBundle(samples=acc, awg={"vpp": vpp})
+        awg_meta = {"vpp": vpp}
+        if f_req_all or f_eff_all or ncycles_all:
+            awg_meta = _merge_sine_awg_meta(awg_meta, f_req_all, f_eff_all, ncycles_all, Fs, N)
+        return WaveBundle(samples=acc, awg=awg_meta)
 
-    # pure sines
-    bundles = []
+    # pure sines / funcs
+    sine_parts = []
+    func_parts = []
+    f_req_all: List[float] = []
+    f_eff_all: List[float] = []
+    ncycles_all: List[int] = []
     for name in parts:
-        wb = _generate_single_bundle(name, Fs, granularity, False, segment_length_ms, ch_index)
-        x = np.asarray(wb.samples, dtype=np.float64)
-        if x.size > 0:
-            bundles.append(x)
+        if name.startswith("sine"):
+            func_name = f"sine_combination_waveform{name[4:]}"
+            func = getattr(USER_main, func_name, None)
+            if func is None:
+                raise ValueError(f"Unknown sine selector: {name}")
+            params = func()
+            N_i = _sine_segment_length_from_params(params, Fs, granularity)
+            sine_parts.append((name, N_i, params))
+        else:
+            wb = _generate_single_bundle(name, Fs, granularity, False, segment_length_ms, ch_index)
+            x = np.asarray(wb.samples, dtype=np.float64)
+            if x.size > 0:
+                func_parts.append(x)
 
-    if not bundles:
+    if not sine_parts and not func_parts:
         return WaveBundle(samples=np.zeros(granularity, dtype=np.float64))
 
-    N = max(len(x) for x in bundles)
+    lengths = [n for _, n, _ in sine_parts] + [len(x) for x in func_parts]
+    N = max(lengths) if lengths else granularity
     N = _quantize_count(N, granularity, cap=int(4e6))
 
     acc = np.zeros(N, dtype=np.float64)
-    for x in bundles:
+    for name, _, params in sine_parts:
+        single = _generate_sine_bundle_with_N(name, Fs, N, False, params=params)
+        x = np.asarray(single.samples, dtype=np.float64)
+        if x.size == 0:
+            continue
+        acc += x
+        if single.awg:
+            f_req_all.extend(_as_list(single.awg.get("f_req")))
+            f_eff_all.extend(_as_list(single.awg.get("f_eff")))
+            ncycles_all.extend(_as_list(single.awg.get("Ncycles")))
+
+    for x in func_parts:
         if len(x) < N:
             reps = int(math.ceil(N / len(x)))
             x_long = np.tile(x, reps)[:N]
@@ -542,7 +662,10 @@ def _generate_mixed_bundle(
         except Exception:
             pass
 
-    return WaveBundle(samples=acc)
+    awg_meta = None
+    if f_req_all or f_eff_all or ncycles_all:
+        awg_meta = _merge_sine_awg_meta(None, f_req_all, f_eff_all, ncycles_all, Fs, N)
+    return WaveBundle(samples=acc, awg=awg_meta)
 
 
 # single wavebundle, 8 bit int
@@ -561,10 +684,14 @@ def generate_wave_bundle(
     """
     if '+' in selector:
         wb = _generate_mixed_bundle(selector, Fs, granularity, preview, segment_length_ms, ch_index)
-        awg = {}
+        awg = wb.awg or {}
     else:
         wb = _generate_single_bundle(selector, Fs, granularity, preview, segment_length_ms, ch_index)
         awg = _get_awg_settings_for_selector(selector)
+        if wb.awg:
+            merged = dict(awg or {})
+            merged.update(wb.awg)
+            awg = merged
 
     vpp = float(awg.get("vpp", 1.0))
     wb.samples = final_dac_stage(_volts_to_norm(wb.samples, vpp))
