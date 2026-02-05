@@ -84,6 +84,9 @@ def _apply_awg_settings(awg, ch_num: int, awg_cfg: dict | None):
         awg.write(f":VOLT{ch_num} {float(vpp)}")          # Vpp amplitude :contentReference[oaicite:3]{index=3}
     if offs is not None:
         awg.write(f":VOLT{ch_num}:OFFS {float(offs)}")    # offset :contentReference[oaicite:4]{index=4}
+
+    print("SYST:ERR?", awg.query("SYST:ERR?").strip())
+
     print("VOLT?", awg.query(f":VOLT{ch_num}?").strip())
     print("OFFS?", awg.query(f":VOLT{ch_num}:OFFS?").strip())
     print("ERR?",  awg.query(":SYST:ERR?").strip())

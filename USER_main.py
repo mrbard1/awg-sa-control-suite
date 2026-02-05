@@ -59,7 +59,7 @@ mix_headroom = 1.0
 # ------------------------------------------------------------
 # AWG is always used. Enable/disable measurement instruments here.
 use_spectrum_analyzer = True
-use_oscilloscope = False
+use_oscilloscope = True
 
 
 # 4) PREVIEW & DATA LOGGING
@@ -67,7 +67,7 @@ use_oscilloscope = False
 # preview_waveform: show matplotlib preview of generated waveform(s)
 # save_data: create an empty .dat file with appropriate columns.
 preview_waveform = True
-save_data = True
+save_data = False
 
 
 # 5) SPECTRUM ANALYZER SWEEP SETTINGS
@@ -162,7 +162,7 @@ def sine_combination_waveform1():
 
     return {
         # signal definition (software, Volts)
-        'frequencies': [10.5e9],   # Hz (1 Hz to ~2*sample_rate)
+        'frequencies': [10.5e6],   # Hz (1 Hz to ~2*sample_rate)
         'phases':      [0],
         'amplitudes':  [0.5],    # Vpk (-0.5 V to +0.5 V)
         'offsets':     [0],
