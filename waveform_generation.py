@@ -503,9 +503,17 @@ def _generate_mixed_bundle(
     if not parts:
         raise ValueError("Empty mixed selector.")
 
-    
+    def _first_awg_with_vpp(names: List[str]) -> dict:
+        for nm in names:
+            if nm.startswith("sine"):
+                awg_cfg = _get_awg_settings_for_selector(nm)
+                if "vpp" in awg_cfg:
+                    return dict(awg_cfg)
+        return {}
 
     has_noise = any(p.startswith("noise_") for p in parts)
+    base_awg = _first_awg_with_vpp(parts)
+    vpp = float(base_awg.get("vpp", 1.0))
 
     # mixture includes noise and real waveform, use segment_length_ms to determine N
     if has_noise:
@@ -566,15 +574,6 @@ def _generate_mixed_bundle(
                 raw_sine = x_long.copy()
                 acc += gain * x_long
         
-        vpp = 1.0
-        for name in parts:
-            if name.startswith("sine"):
-                awg = _get_awg_settings_for_selector(name)
-                vpp = float(awg.get("vpp", vpp))
-                break
-
-
-        
         headroom = getattr(USER_main, "mix_headroom", 1.0)
         acc *= headroom
         if preview:
@@ -598,7 +597,8 @@ def _generate_mixed_bundle(
             except Exception:
                 pass
 
-        awg_meta = {"vpp": vpp}
+        awg_meta = dict(base_awg)
+        awg_meta.setdefault("vpp", vpp)
         if f_req_all or f_eff_all or ncycles_all:
             awg_meta = _merge_sine_awg_meta(awg_meta, f_req_all, f_eff_all, ncycles_all, Fs, N)
         return WaveBundle(samples=acc, awg=awg_meta)
@@ -662,9 +662,10 @@ def _generate_mixed_bundle(
         except Exception:
             pass
 
-    awg_meta = None
+    awg_meta = dict(base_awg)
+    awg_meta.setdefault("vpp", vpp)
     if f_req_all or f_eff_all or ncycles_all:
-        awg_meta = _merge_sine_awg_meta(None, f_req_all, f_eff_all, ncycles_all, Fs, N)
+        awg_meta = _merge_sine_awg_meta(awg_meta, f_req_all, f_eff_all, ncycles_all, Fs, N)
     return WaveBundle(samples=acc, awg=awg_meta)
 
 
