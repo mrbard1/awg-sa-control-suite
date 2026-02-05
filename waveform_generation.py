@@ -187,13 +187,30 @@ def _generate_pink_noise(N: int) -> np.ndarray:
     return total
 
 
-def _generate_noise_volts(selector: str, N: int, ch_index: int) -> np.ndarray:
+def _white_noise_volts(N: int, Fs: float) -> (np.ndarray, dict):
+    density = getattr(USER_main, "noise_density_vrthz", None)
+    if density is not None and float(density) > 0:
+        sigma = float(density) * math.sqrt(Fs / 2.0)
+        y = sigma * np.random.randn(N).astype(np.float64)
+        meta = {
+            "noise_density_vrthz": float(density),
+            "noise_sigma_volts": float(sigma),
+            "Fs": float(Fs),
+            "N": int(N),
+        }
+        return y, meta
+    return _generate_white_noise(N) * USER_main.noise_white_amplitude, {}
+
+
+def _generate_noise_volts(selector: str, N: int, Fs: float, ch_index: int) -> (np.ndarray, np.ndarray, dict):
     if selector == "noise_white":
-        y = _generate_white_noise(N) * USER_main.noise_white_amplitude
+        y, meta = _white_noise_volts(N, Fs)
     elif selector == "noise_pink":
         y = _generate_pink_noise(N) * USER_main.noise_pink_amplitude
+        meta = {}
     elif selector == "noise_brown":
         y = _generate_brown_noise(N) * USER_main.noise_brown_amplitude
+        meta = {}
     else:
         raise ValueError(f"Unknown noise selector: {selector}")
 
@@ -202,7 +219,8 @@ def _generate_noise_volts(selector: str, N: int, ch_index: int) -> np.ndarray:
     if fade > 0:
         y = _apply_crossfade(y, fade)
 
-    return process_noise_only(y, ch_index)
+    y_proc = process_noise_only(y, ch_index)
+    return y_proc, y, meta
 
 
 
@@ -469,21 +487,7 @@ def _generate_single_bundle(
         # Use segment_length_ms, cap to upload reasonable waveform
         N = _compute_segment_length(Fs, granularity, segment_length_ms, cap=int(16e6))
 
-        if selector == "noise_white":
-            y = _generate_white_noise(N) * USER_main.noise_white_amplitude
-        elif selector == "noise_pink":
-            y = _generate_pink_noise(N) * USER_main.noise_pink_amplitude
-        elif selector == "noise_brown":
-            y = _generate_brown_noise(N) * USER_main.noise_brown_amplitude
-        else:
-            raise ValueError(f"Unknown noise selector: {selector}")
-
-        fade_frac = getattr(USER_main, "noise_fade_fraction", 0.0)
-        fade = int(fade_frac * N)
-        if fade > 0:
-            y = _apply_crossfade(y, fade)
-
-        y_proc = process_noise_only(y, ch_index)
+        y_proc, y, noise_meta = _generate_noise_volts(selector, N, Fs, ch_index)
 
         if preview:
             try:
@@ -504,7 +508,10 @@ def _generate_single_bundle(
             except Exception:
                 pass
 
-        return WaveBundle(samples=y_proc, awg=None)
+        awg_meta = None
+        if noise_meta:
+            awg_meta = dict(noise_meta)
+        return WaveBundle(samples=y_proc, awg=awg_meta)
 
     # unkown waveform selector
     raise ValueError(f"Unsupported selector '{selector}'")
@@ -550,6 +557,7 @@ def _generate_mixed_bundle(
         raw_sine = None
         raw_noise = None
         proc_noise = None
+        noise_meta = None
         f_req_all: List[float] = []
         f_eff_all: List[float] = []
         ncycles_all: List[int] = []
@@ -557,22 +565,10 @@ def _generate_mixed_bundle(
         for name in parts:
             gain = getattr(USER_main, "component_gains", {}).get(name, 1.0)
             if name.startswith("noise_"):
-                if name == "noise_white":
-                    y = _generate_white_noise(N) * USER_main.noise_white_amplitude
-                elif name == "noise_pink":
-                    y = _generate_pink_noise(N) * USER_main.noise_pink_amplitude
-                elif name == "noise_brown":
-                    y = _generate_brown_noise(N) * USER_main.noise_brown_amplitude
-                else:
-                    raise ValueError(f"Unknown noise selector in mix: {name}")
-
-                fade_frac = getattr(USER_main, "noise_fade_fraction", 0.0)
-                fade = int(fade_frac * N)
-                if fade > 0:
-                    y = _apply_crossfade(y, fade)
-
-                raw_noise = y.copy()
-                proc_noise = process_noise_only(y, ch_index)
+                proc_noise, raw_noise_local, meta = _generate_noise_volts(name, N, Fs, ch_index)
+                raw_noise = raw_noise_local.copy()
+                if meta and noise_meta is None:
+                    noise_meta = dict(meta)
                 #proc_noise = force_noise_legacy_safe(proc_noise, headroom=0.9)
                 
                 acc += gain * proc_noise
@@ -626,6 +622,8 @@ def _generate_mixed_bundle(
 
         awg_meta = dict(base_awg)
         awg_meta.setdefault("vpp", vpp)
+        if noise_meta:
+            awg_meta.update(noise_meta)
         if f_req_all or f_eff_all or ncycles_all:
             awg_meta = _merge_sine_awg_meta(awg_meta, f_req_all, f_eff_all, ncycles_all, Fs, N)
         return WaveBundle(samples=acc, awg=awg_meta)

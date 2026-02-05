@@ -92,6 +92,9 @@ noise_white_amplitude = 0.5 # 0.0 to 1.0 recommended (scaling of noise)
 noise_pink_amplitude = 0.5
 noise_brown_amplitude = 0.5
 
+# Calibrated white-noise density in V/sqrt(Hz). If None, disabled.
+noise_density_vrthz = None
+
 # Noise Post Processing:
 noise_post_process_mode_ch = {
     1: "none",
@@ -291,6 +294,9 @@ def main():
     dac_rate = defaults['waveform']['sample_rate']
     sample_rate = dac_rate / srd
     granularity = 256 // srd
+
+    global noise_density_vrthz
+    noise_density_vrthz = defaults.get("waveform", {}).get("noise_density_vrthz", noise_density_vrthz)
 
     # Build initial waveform bundle(s)
     bundles = waveform_generation.build_waveform_bundles(

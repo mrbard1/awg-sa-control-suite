@@ -16,6 +16,7 @@ waveform:
   num_periods: 1
   amplitude: 0.5                                         # Vpp
   dc_offset: 0                                           # V
+  noise_density_vrthz:                                   # V/sqrt(Hz); null disables
 
 spectrum_analyzer:
   center_frequency:
