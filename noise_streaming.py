@@ -108,7 +108,7 @@ class NoiseStreamer:
                     cap=int(16e6),
                 )
                 for nc in noise_comps:
-                    yv = waveform_generation._generate_noise_volts(nc, noise_len, ch_num)
+                    yv, _raw, _meta = waveform_generation._generate_noise_volts(nc, noise_len, self.Fs, ch_num)
                     noise_volts.append(np.asarray(yv, dtype=np.float64))
 
                 # Decide common length (min of all available arrays)
