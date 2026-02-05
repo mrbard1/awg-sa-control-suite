@@ -1,0 +1,35 @@
+# Default configuration for AWG, spectrum analyzer, oscilloscope, and waveform settings
+
+instruments:
+  awg:
+    address: 'TCPIP0::localhost::hislip0::INSTR'        # LAN from M8195 Soft Front Panel
+    timeout: 240000                                      # ms
+  spectrum_analyzer:
+    address: 'TCPIP0::10.164.17.219::hislip0::INSTR'    # LAN from Keysight Connection Expert
+    timeout: 2400000                                     # ms
+  oscilloscope:
+    address: 'TCPIP0::169.254.7.103::inst0::INSTR'
+    timeout: 10000                                      # ms
+
+waveform:
+  sample_rate: 64000000000                               # in Sa/s for AWG
+  num_periods: 1
+  amplitude: 0.5                                         # Vpp
+  dc_offset: 0                                           # V
+
+spectrum_analyzer:
+  center_frequency:
+  span:
+  averaging: 1
+  resolution_bandwidth:
+  video_bandwidth:
+
+oscilloscope:
+  timebase_scale:
+  vertical_scale:
+  trigger_mode:
+
+
+logging:
+  file:
+  level:
