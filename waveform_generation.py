@@ -85,6 +85,15 @@ def _volts_to_norm(y_volts: np.ndarray, vpp: float) -> np.ndarray:
     return np.asarray(y_volts, dtype=np.float64) / vpk_fs
 
 
+def _norm_to_volts(y_norm: np.ndarray, vpp: float) -> np.ndarray:
+    vpk_fs = max(float(vpp) / 2.0, 1e-12)
+    return np.asarray(y_norm, dtype=np.float64) * vpk_fs
+
+
+def _int8_to_norm(codes: np.ndarray) -> np.ndarray:
+    return np.asarray(codes, dtype=np.float64) / 127.0
+
+
 
 def _apply_crossfade(y: np.ndarray, fade_samples: int) -> np.ndarray:
     """
@@ -176,6 +185,24 @@ def _generate_pink_noise(N: int) -> np.ndarray:
         total /= peak
 
     return total
+
+
+def _generate_noise_volts(selector: str, N: int, ch_index: int) -> np.ndarray:
+    if selector == "noise_white":
+        y = _generate_white_noise(N) * USER_main.noise_white_amplitude
+    elif selector == "noise_pink":
+        y = _generate_pink_noise(N) * USER_main.noise_pink_amplitude
+    elif selector == "noise_brown":
+        y = _generate_brown_noise(N) * USER_main.noise_brown_amplitude
+    else:
+        raise ValueError(f"Unknown noise selector: {selector}")
+
+    fade_frac = getattr(USER_main, "noise_fade_fraction", 0.0)
+    fade = int(fade_frac * N)
+    if fade > 0:
+        y = _apply_crossfade(y, fade)
+
+    return process_noise_only(y, ch_index)
 
 
 

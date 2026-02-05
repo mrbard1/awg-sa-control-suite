@@ -64,6 +64,7 @@ class NoiseStreamer:
 
         # Precompute static base per channel (if any)
         self.static_base = {}
+        self.static_awg = {}
         for ch_num, static_selector, _ in self.noise_channels:
             if static_selector:
                 b = waveform_generation.generate_wave_bundle(
@@ -74,12 +75,16 @@ class NoiseStreamer:
                     segment_length_ms=self.segment_length_ms,
                 )
                 self.static_base[ch_num] = np.asarray(b.samples, dtype=np.int8)
+                self.static_awg[ch_num] = dict(b.awg or {})
             else:
                 self.static_base[ch_num] = None
+                self.static_awg[ch_num] = {}
 
         self._stop = threading.Event()
         self._thread = None
         self._active_seg = {ch: 1 for ch, _, _ in self.noise_channels}
+        self._last_vpp = {}
+        self._last_clip = {}
 
     def _segment_duration(self) -> float:
         return self.segment_length_ms / 1000.0
@@ -95,19 +100,19 @@ class NoiseStreamer:
                 next_seg = 2 if current_seg == 1 else 1
 
                 # Generate all noise components
-                noise_bundles = []
+                noise_volts = []
+                noise_len = waveform_generation._compute_segment_length(
+                    self.Fs,
+                    self.granularity,
+                    self.segment_length_ms,
+                    cap=int(16e6),
+                )
                 for nc in noise_comps:
-                    nb = waveform_generation.generate_wave_bundle(
-                        nc,
-                        self.Fs,
-                        self.granularity,
-                        preview=False,
-                        segment_length_ms=self.segment_length_ms,
-                    )
-                    noise_bundles.append(np.asarray(nb.samples, dtype=np.int8))
+                    yv = waveform_generation._generate_noise_volts(nc, noise_len, ch_num)
+                    noise_volts.append(np.asarray(yv, dtype=np.float64))
 
                 # Decide common length (min of all available arrays)
-                lengths = [len(nb) for nb in noise_bundles]
+                lengths = [len(nb) for nb in noise_volts]
                 static_arr = self.static_base.get(ch_num)
                 if static_arr is not None:
                     lengths.append(len(static_arr))
@@ -115,13 +120,38 @@ class NoiseStreamer:
                     continue
                 N = min(lengths)
 
-                acc = np.zeros(N, dtype=np.int16)
-                if static_arr is not None:
-                    acc += static_arr[:N].astype(np.int16)
-                for nb in noise_bundles:
-                    acc += nb[:N].astype(np.int16)
+                noise_awg = {}
+                for nc in noise_comps:
+                    awg_cfg = waveform_generation._get_awg_settings_for_selector(nc)
+                    if "vpp" in awg_cfg:
+                        noise_awg = awg_cfg
+                        break
+                base_awg = self.static_awg.get(ch_num, {})
+                vpp = float(noise_awg.get("vpp", base_awg.get("vpp", 1.0)))
+                if self._last_vpp.get(ch_num) != vpp:
+                    print(f"NoiseStreamer ch{ch_num} mix vpp={vpp}")
+                    self._last_vpp[ch_num] = vpp
 
-                combined = np.clip(acc, -127, 127).astype(np.int8)
+                if static_arr is not None:
+                    base_norm = waveform_generation._int8_to_norm(static_arr[:N])
+                    base_volts = waveform_generation._norm_to_volts(base_norm, vpp)
+                else:
+                    base_volts = np.zeros(N, dtype=np.float64)
+
+                acc_volts = base_volts
+                for nb in noise_volts:
+                    acc_volts = acc_volts + nb[:N]
+
+                headroom = getattr(waveform_generation.USER_main, "mix_headroom", 1.0)
+                acc_volts = acc_volts * headroom
+
+                mixed_norm = waveform_generation._volts_to_norm(acc_volts, vpp)
+                clip_pct = float(np.mean(np.abs(mixed_norm) > 1.0) * 100.0)
+                if clip_pct > 0.0 and self._last_clip.get(ch_num, 0.0) == 0.0:
+                    print(f"NoiseStreamer ch{ch_num} clip {clip_pct:.2f}%")
+                self._last_clip[ch_num] = clip_pct
+
+                combined = waveform_generation.final_dac_stage(mixed_norm)
 
                 awg_control.update_segment_samples(
                     self.awg,
