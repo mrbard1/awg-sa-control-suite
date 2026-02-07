@@ -44,7 +44,7 @@ sweep_current_freq = sweep_step_start
 #   - or any '+' combination, e.g. 'sine1+noise_white'
 #
 # NOTE: Channel-to-DAC mapping depends on generation_mode (see above).
-channel_1_output = 'sine1'
+channel_1_output = 'sine1+noise_white'
 channel_2_output = 'none'
 channel_3_output = 'none'
 channel_4_output = 'none'
@@ -86,7 +86,7 @@ steps    = 0.00001e9      # Hz step used for RBW config
 segment_length_ms = 10    # Default: 10 ms per noise segment
 continuous_noise_streaming = False
 
-noise_fade_fraction = 0.1
+noise_fade_fraction = 0.0
 
 noise_white_amplitude = 0.5 # 0.0 to 1.0 recommended (scaling of noise)
 noise_pink_amplitude = 0.5
