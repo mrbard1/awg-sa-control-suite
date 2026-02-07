@@ -161,7 +161,7 @@ def create_data_file(timestamp, mode, use_sa, use_osc):
 
     # SA columns
     if use_sa:
-        cols += ["FREQUENCY (Hz)", "POWER (dBm)", "STEP_FREQUENCY (Hz)"]
+        cols += ["FREQUENCY (Hz)", "POWER (dBm)", "POWER (dBm/Hz)", "STEP_FREQUENCY (Hz)", "RBW (Hz)", "VBW (Hz)"]
 
     # OSC columns
     if use_osc:

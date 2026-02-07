@@ -135,9 +135,13 @@ class NoiseStreamer:
                 # Generate all noise components
                 noise_volts = []
                 noise_len = self.noise_len
+                gains = getattr(waveform_generation.USER_main, "component_gains", {})
+
                 for nc in noise_comps:
                     yv, _raw, _meta = waveform_generation._generate_noise_volts(nc, noise_len, self.Fs, ch_num)
-                    noise_volts.append(np.asarray(yv, dtype=np.float64))
+                    gain = float(gains.get(nc, 1.0))
+                    noise_volts.append(gain * np.asarray(yv, dtype=np.float64))
+
 
                 static_arr = self.static_base.get(ch_num)
                 N = noise_len

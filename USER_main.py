@@ -83,7 +83,8 @@ save_data = True
 # Only used if use_spectrum_analyzer = True.
 min_freq = 10.4999e9     # Hz
 max_freq = 10.5001e9    # Hz
-steps    = 0.00001e9      # Hz step used for RBW config
+rbw_hz    = 0.00001e9      # SA resolution bandwidth (RBW) in Hz
+sa_sweep_points = 1001      # Number of points per SA sweep
 
 
 # 6) NOISE / STREAMING SETTINGS
@@ -334,7 +335,8 @@ def main():
             defaults['instruments']['spectrum_analyzer']['address'],
             defaults['instruments']['spectrum_analyzer']['timeout'],
         )
-        sa_control.configure_sa(sa, min_freq, max_freq, steps)
+        sa_control.configure_sa(sa, min_freq, max_freq, rbw_hz=rbw_hz, vbw_hz=None, points=sa_sweep_points)
+
 
     osc = None
     if use_oscilloscope:
@@ -376,12 +378,18 @@ def main():
         sa_control.initial_sweep(sa)
 
         # requires sa_control.get_spectrum_data(sa, plot=False) -> (freq_hz, p_dbm)
-        freq_hz, p_dbm = sa_control.get_spectrum_data(sa, plot=True)
+        freq_hz, p_dbm, sa_settings = sa_control.get_spectrum_data(sa, plot=True)
+        rbw_hz = sa_settings.get("rbw_hz", np.nan)
+        vbw_hz = sa_settings.get("vbw_hz", np.nan)
 
         rows = [{
             "FREQUENCY (Hz)": float(ff),
             "POWER (dBm)": float(pp),
+            "POWER (dBm/Hz)": (float(pp) - 10.0 * np.log10(float(rbw_hz))) if (rbw_hz is not None and np.isfinite(rbw_hz) and float(rbw_hz) > 0) else np.nan,
             "STEP_FREQUENCY (Hz)": (float(step_freq) if step_freq is not None else np.nan),
+            "RBW (Hz)": float(rbw_hz) if rbw_hz is not None else np.nan,
+            "VBW (Hz)": float(vbw_hz) if vbw_hz is not None else np.nan,
+
         } for ff, pp in zip(freq_hz, p_dbm)]
         utilities.append_rows(file_path, rows)
 
