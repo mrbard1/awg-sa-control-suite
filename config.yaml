@@ -31,7 +31,7 @@ spectrum_analyzer:
   span:
   averaging: 1
   resolution_bandwidth:
-  video_bandwidth:
+  video_bandwidth: null
   detector: RMS
   avg_on: true
   avg_count: 20
