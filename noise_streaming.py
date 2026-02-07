@@ -179,6 +179,20 @@ class NoiseStreamer:
 
                 headroom = getattr(waveform_generation.USER_main, "mix_headroom", 1.0)
                 acc_volts = acc_volts * headroom
+                # ---- STRICT amplitude preflight (fail-fast) ----
+                amplitude_policy = getattr(waveform_generation.USER_main, "amplitude_policy", "safe")
+
+                full_scale = vpp / 2.0
+                peak_utilization = float(np.max(np.abs(acc_volts)) / full_scale) if full_scale > 0 else 0.0
+                clip_predicted = peak_utilization > 1.0
+
+                if amplitude_policy == "strict" and clip_predicted:
+                    print(
+                        f"NoiseStreamer ch{ch_num} ABORT: "
+                        f"peak_utilization={peak_utilization:.3f} (>1.0)"
+                    )
+                    # Skip upload of this segment
+                    continue
 
                 mixed_norm = waveform_generation._volts_to_norm(acc_volts, vpp)
                 clip_pct = float(np.mean(np.abs(mixed_norm) > 1.0) * 100.0)

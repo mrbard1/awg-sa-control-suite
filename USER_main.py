@@ -371,6 +371,7 @@ def main():
     # SA logging helper
     # ---------------------
     def log_sa(step_freq=None):
+        global bundles
         if not use_spectrum_analyzer or sa is None:
             return
 
@@ -382,6 +383,39 @@ def main():
         rbw_hz = sa_settings.get("rbw_hz", np.nan)
         vbw_hz = sa_settings.get("vbw_hz", np.nan)
 
+        # -----------------------------
+        # Waveform metadata snapshot
+        # -----------------------------
+        active_key = None
+        for k in ("ch1", "ch2", "ch3", "ch4"):
+            if bundles.get(k) is not None:
+                active_key = k
+                break
+
+        wb = bundles.get(active_key) if active_key else None
+        wmeta = (wb.awg or {}) if wb is not None else {}
+
+        wave_ch = active_key if active_key else ""
+        awg_vpp = float(wmeta.get("vpp", np.nan)) if wmeta.get("vpp", None) is not None else np.nan
+        awg_offs = float(wmeta.get("offs", np.nan)) if wmeta.get("offs", None) is not None else np.nan
+        awg_load = str(wmeta.get("load", ""))
+
+        wave_fs = float(wmeta.get("Fs", np.nan)) if wmeta.get("Fs", None) is not None else np.nan
+        wave_n  = int(wmeta.get("N", -1)) if wmeta.get("N", None) is not None else -1
+
+        sine_f_req = float(wmeta.get("f_req", np.nan)) if wmeta.get("f_req", None) is not None else np.nan
+        sine_f_eff = float(wmeta.get("f_eff", np.nan)) if wmeta.get("f_eff", None) is not None else np.nan
+
+        sine_ncycles = str(wmeta.get("Ncycles", ""))
+
+        noise_density = wmeta.get("noise_density_vrthz", None)
+        noise_density = float(noise_density) if noise_density is not None else np.nan
+
+        amp_policy = str(wmeta.get("amplitude_policy", ""))
+        peak_util  = float(wmeta.get("peak_utilization", np.nan)) if wmeta.get("peak_utilization", None) is not None else np.nan
+        clip_pred  = bool(wmeta.get("clip_predicted", False)) if wmeta.get("clip_predicted", None) is not None else False
+
+
         rows = [{
             "FREQUENCY (Hz)": float(ff),
             "POWER (dBm)": float(pp),
@@ -389,6 +423,20 @@ def main():
             "STEP_FREQUENCY (Hz)": (float(step_freq) if step_freq is not None else np.nan),
             "RBW (Hz)": float(rbw_hz) if rbw_hz is not None else np.nan,
             "VBW (Hz)": float(vbw_hz) if vbw_hz is not None else np.nan,
+            "WAVE.CH (str)": wave_ch,
+            "AWG.VPP (Vpp)": awg_vpp,
+            "AWG.OFFS (V)": awg_offs,
+            "AWG.LOAD (str)": awg_load,
+            "WAVE.FS (Sa/s)": wave_fs,
+            "WAVE.N (samples)": wave_n,
+            "SINE.F_REQ (Hz)": sine_f_req,
+            "SINE.F_EFF (Hz)": sine_f_eff,
+            "SINE.NCYCLES (str)": sine_ncycles,
+            "NOISE.DENSITY (V/rtHz)": noise_density,
+            "AMP.POLICY (str)": amp_policy,
+            "PEAK.UTIL (xFS)": peak_util,
+            "CLIP.PRED (bool)": clip_pred,
+
 
         } for ff, pp in zip(freq_hz, p_dbm)]
         utilities.append_rows(file_path, rows)

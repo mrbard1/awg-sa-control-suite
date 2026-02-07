@@ -161,7 +161,17 @@ def create_data_file(timestamp, mode, use_sa, use_osc):
 
     # SA columns
     if use_sa:
-        cols += ["FREQUENCY (Hz)", "POWER (dBm)", "POWER (dBm/Hz)", "STEP_FREQUENCY (Hz)", "RBW (Hz)", "VBW (Hz)"]
+        cols += [
+            "FREQUENCY (Hz)", "POWER (dBm)", "POWER (dBm/Hz)",
+            "STEP_FREQUENCY (Hz)", "RBW (Hz)", "VBW (Hz)",
+            # ---- waveform metadata (repeated per SA point) ----
+            "WAVE.CH (str)",
+            "AWG.VPP (Vpp)", "AWG.OFFS (V)", "AWG.LOAD (str)",
+            "WAVE.FS (Sa/s)", "WAVE.N (samples)",
+            "SINE.F_REQ (Hz)", "SINE.F_EFF (Hz)", "SINE.NCYCLES (str)",
+            "NOISE.DENSITY (V/rtHz)",
+            "AMP.POLICY (str)", "PEAK.UTIL (xFS)", "CLIP.PRED (bool)"
+        ]
 
     # OSC columns
     if use_osc:
