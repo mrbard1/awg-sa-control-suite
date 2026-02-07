@@ -164,6 +164,7 @@ def create_data_file(timestamp, mode, use_sa, use_osc):
         cols += [
             "FREQUENCY (Hz)", "POWER (dBm)", "POWER (dBm/Hz)",
             "STEP_FREQUENCY (Hz)", "RBW (Hz)", "VBW (Hz)",
+            "TSEG (s)", "NOISE.UPDATE (s)",
             # ---- waveform metadata (repeated per SA point) ----
             "WAVE.CH (str)",
             "AWG.VPP (Vpp)", "AWG.OFFS (V)", "AWG.LOAD (str)",

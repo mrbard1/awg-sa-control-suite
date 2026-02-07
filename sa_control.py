@@ -75,7 +75,7 @@ def get_spectrum_data(sa, plot=False):
     num_points = int(float(sa.query(':SWEep:POINts?')))
 
     freq_hz = np.linspace(start_freq, stop_freq, num_points)
-        # --- Settings snapshot (required for RBW-aware PSD) ---
+    # --- Settings snapshot (required for RBW-aware PSD) ---
     settings = {}
 
     # Frequencies / sweep

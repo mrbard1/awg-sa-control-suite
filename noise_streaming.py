@@ -28,6 +28,8 @@ class NoiseStreamer:
         granularity: int,
         segment_length_ms: int,
         refresh_factor: float = 0.9,
+        noise_update_period_ms: int = None,
+
     ):
         self.awg = awg
         self.mode = mode
@@ -44,6 +46,8 @@ class NoiseStreamer:
             self.segment_length_ms,
             cap=int(16e6),
         )
+        self.noise_update_period_ms = noise_update_period_ms
+
 
 
         mode_to_channels = {
@@ -118,13 +122,15 @@ class NoiseStreamer:
         self._active_seg = {ch: 1 for ch, _, _ in self.noise_channels}
         self._last_vpp = {}
         self._last_clip = {}
+        self._seed_ctr = {ch: 0 for ch, _, _ in self.noise_channels}
+
 
     def _segment_duration(self) -> float:
         return self.segment_length_ms / 1000.0
 
     def _loop(self):
         seg_dt = self._segment_duration()
-        sleep_time = seg_dt * self.refresh_factor
+        sleep_time = (self.noise_update_period_ms / 1000.0) if self.noise_update_period_ms else (seg_dt * self.refresh_factor)
 
         while not self._stop.is_set():
             for ch_num, _static_selector, noise_comps in self.noise_channels:
@@ -138,7 +144,12 @@ class NoiseStreamer:
                 gains = getattr(waveform_generation.USER_main, "component_gains", {})
 
                 for nc in noise_comps:
-                    yv, _raw, _meta = waveform_generation._generate_noise_volts(nc, noise_len, self.Fs, ch_num)
+                    base_seed = getattr(waveform_generation.USER_main, "noise_seed", None)
+                    ctr = self._seed_ctr.get(ch_num, 0)
+                    seg_seed = (int(base_seed) + ctr) if base_seed is not None else None
+                    yv, _raw, _meta = waveform_generation._generate_noise_volts(nc, noise_len, self.Fs, ch_num, seed=seg_seed)
+                    self._seed_ctr[ch_num] = ctr + 1
+
                     gain = float(gains.get(nc, 1.0))
                     noise_volts.append(gain * np.asarray(yv, dtype=np.float64))
 

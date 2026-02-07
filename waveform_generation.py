@@ -202,7 +202,9 @@ def _white_noise_volts(N: int, Fs: float) -> (np.ndarray, dict):
     return _generate_white_noise(N) * USER_main.noise_white_amplitude, {}
 
 
-def _generate_noise_volts(selector: str, N: int, Fs: float, ch_index: int) -> (np.ndarray, np.ndarray, dict):
+def _generate_noise_volts(selector: str, N: int, Fs: float, ch_index: int, seed=None) -> (np.ndarray, np.ndarray, dict):
+    if seed is not None:
+        np.random.seed(int(seed))    
     if selector == "noise_white":
         y, meta = _white_noise_volts(N, Fs)
     elif selector == "noise_pink":
@@ -494,7 +496,7 @@ def _generate_single_bundle(
         # Use segment_length_ms, cap to upload reasonable waveform
         N = _compute_segment_length(Fs, granularity, segment_length_ms, cap=int(16e6))
 
-        y_proc, y, noise_meta = _generate_noise_volts(selector, N, Fs, ch_index)
+        y_proc, y, noise_meta = _generate_noise_volts(selector, N, Fs, ch_index, seed=getattr(USER_main, "noise_seed_current", getattr(USER_main, "noise_seed", None)))
 
         if preview:
             try:
@@ -572,7 +574,7 @@ def _generate_mixed_bundle(
         for name in parts:
             gain = getattr(USER_main, "component_gains", {}).get(name, 1.0)
             if name.startswith("noise_"):
-                proc_noise, raw_noise_local, meta = _generate_noise_volts(name, N, Fs, ch_index)
+                proc_noise, raw_noise_local, meta = _generate_noise_volts(name, N, Fs, ch_index, seed=getattr(USER_main, "noise_seed_current", getattr(USER_main, "noise_seed", None)))
                 raw_noise = raw_noise_local.copy()
                 if meta and noise_meta is None:
                     noise_meta = dict(meta)

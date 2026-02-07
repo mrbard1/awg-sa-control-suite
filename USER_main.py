@@ -94,6 +94,9 @@ sa_sweep_points = 1001      # Number of points per SA sweep
 # regenerate noise segments on channels whose selector includes 'noise_*'.
 segment_length_ms = 10    # Default: 10 ms per noise segment
 continuous_noise_streaming = False
+min_noise_segment_ms = 50          # enforce if any selector contains noise_
+noise_update_period_ms = 50        # streamer update cadence (ms)
+
 
 noise_fade_fraction = 0.1
 
@@ -103,6 +106,7 @@ noise_brown_amplitude = 0.5
 
 # Calibrated white-noise density in V/sqrt(Hz). If None, disabled.
 noise_density_vrthz = None
+noise_seed = 12345   # set None to disable deterministic noise
 
 # Noise Post Processing:
 noise_post_process_mode_ch = {
@@ -170,7 +174,6 @@ osc_grid = "FULL"           # FULL, HALF, NONE
 
 def sine_combination_waveform1():
     global sweep_current_freq
-    print("sine1 params freq =", sweep_current_freq)
 
     return {
         # signal definition (software, Volts)
@@ -296,6 +299,10 @@ def main():
         channel_3_output.lower(),
         channel_4_output.lower(),
     ]
+    has_noise = any("noise_" in s for s in channel_outputs)
+    if has_noise:
+        segment_length_ms = max(segment_length_ms, min_noise_segment_ms)
+
 
     utilities.generation_mode_check(generation_mode, channel_outputs)
     srd = utilities.get_srd(generation_mode)
@@ -306,6 +313,8 @@ def main():
 
     global noise_density_vrthz
     noise_density_vrthz = defaults.get("waveform", {}).get("noise_density_vrthz", noise_density_vrthz)
+    global noise_seed
+    noise_seed = defaults.get("waveform", {}).get("noise_seed", noise_seed)
 
     # Build initial waveform bundle(s)
     bundles = waveform_generation.build_waveform_bundles(
@@ -399,9 +408,11 @@ def main():
         awg_vpp = float(wmeta.get("vpp", np.nan)) if wmeta.get("vpp", None) is not None else np.nan
         awg_offs = float(wmeta.get("offs", np.nan)) if wmeta.get("offs", None) is not None else np.nan
         awg_load = str(wmeta.get("load", ""))
-
+        
         wave_fs = float(wmeta.get("Fs", np.nan)) if wmeta.get("Fs", None) is not None else np.nan
         wave_n  = int(wmeta.get("N", -1)) if wmeta.get("N", None) is not None else -1
+        tseg_s = (float(wave_n) / float(wave_fs)) if (np.isfinite(wave_fs) and wave_fs > 0 and wave_n > 0) else np.nan
+        update_s = (float(noise_update_period_ms) / 1000.0) if noise_update_period_ms is not None else np.nan
 
         sine_f_req = float(wmeta.get("f_req", np.nan)) if wmeta.get("f_req", None) is not None else np.nan
         sine_f_eff = float(wmeta.get("f_eff", np.nan)) if wmeta.get("f_eff", None) is not None else np.nan
@@ -423,6 +434,8 @@ def main():
             "STEP_FREQUENCY (Hz)": (float(step_freq) if step_freq is not None else np.nan),
             "RBW (Hz)": float(rbw_hz) if rbw_hz is not None else np.nan,
             "VBW (Hz)": float(vbw_hz) if vbw_hz is not None else np.nan,
+            "TSEG (s)": tseg_s,
+            "NOISE.UPDATE (s)": update_s,            
             "WAVE.CH (str)": wave_ch,
             "AWG.VPP (Vpp)": awg_vpp,
             "AWG.OFFS (V)": awg_offs,
@@ -453,6 +466,8 @@ def main():
             Fs=sample_rate,
             granularity=granularity,
             segment_length_ms=segment_length_ms,
+            noise_update_period_ms=noise_update_period_ms,
+
         )
         noise_streamer.start()
 
@@ -463,8 +478,13 @@ def main():
         freqs = np.linspace(sweep_step_start, sweep_step_stop, sweep_step_count)
 
         global sweep_current_freq
-        for f in freqs:
+        for step_idx, f in enumerate(freqs):
             sweep_current_freq = float(f)
+            if noise_seed is not None:
+                noise_seed_current = int(noise_seed) + int(step_idx)
+            else:
+                noise_seed_current = None
+            globals()["noise_seed_current"] = noise_seed_current
 
             bundles = waveform_generation.build_waveform_bundles(
                 generation_mode,
