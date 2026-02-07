@@ -17,6 +17,9 @@ waveform:
   amplitude: 0.5                                         # Vpp
   dc_offset: 0                                           # V
   noise_density_vrthz:                                   # V/sqrt(Hz); null disables
+  amplitude_policy: strict                           # strict|safe
+  clip_k_sigma: 6.0                                  # used for conservative clip prediction
+
 
 spectrum_analyzer:
   center_frequency:

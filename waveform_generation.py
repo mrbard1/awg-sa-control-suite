@@ -231,6 +231,13 @@ def process_noise_only(y: np.ndarray, ch: int) -> np.ndarray:
       - noise_soft_clip_strength_ch: float, used by "clip_soft"
     """
     mode = USER_main.noise_post_process_mode_ch.get(ch, "none")
+    policy = getattr(USER_main, 'amplitude_policy', 'strict')
+    if policy == 'strict' and mode != 'none':
+        raise ValueError(
+            f"Strict amplitude policy forbids noise_post_process_mode_ch[{ch}]='{mode}'. "
+            "Set it to 'none' or switch amplitude_policy to 'safe'."
+        )
+
     k = USER_main.noise_soft_clip_strength_ch.get(ch, 2.0)
 
     y = np.asarray(y, dtype=np.float64)
@@ -720,6 +727,41 @@ def generate_wave_bundle(
             awg = merged
 
     vpp = float(awg.get("vpp", 1.0))
+    policy = getattr(USER_main, 'amplitude_policy', 'strict')
+    # Preflight: predict clipping against requested Vpp (AWG full-scale is ±Vpp/2).
+    peak_abs_volts = float(np.max(np.abs(wb.samples))) if wb.samples.size > 0 else 0.0
+    fullscale = (vpp / 2.0) if vpp > 0 else 0.0
+    peak_utilization = (peak_abs_volts / fullscale) if fullscale > 0 else float('inf')
+    clip_predicted = peak_utilization > 1.0 + 1e-12
+
+    # Attach diagnostic metadata without overwriting existing keys.
+    if wb.awg is None:
+        wb.awg = {}
+    wb.awg.setdefault('vpp', vpp)
+    wb.awg['amplitude_policy'] = policy
+    wb.awg['peak_abs_volts'] = peak_abs_volts
+    wb.awg['peak_utilization'] = peak_utilization
+    wb.awg['clip_predicted'] = bool(clip_predicted)
+
+    if clip_predicted:
+        if policy == 'strict':
+            raise ValueError(
+                f"Waveform would clip requested Vpp={vpp} V (peak={peak_abs_volts:.6g} V, "
+                f"utilization={peak_utilization:.3f}). Reduce component_gains / noise level / sine amplitude, "
+                "increase vpp, or switch amplitude_policy to 'safe'."
+            )
+        # safe mode: scale the entire waveform to fit within full-scale
+        if fullscale > 0 and peak_abs_volts > 0:
+            scale = 0.999 * (fullscale / peak_abs_volts)
+        else:
+            scale = 1.0
+        wb.samples = wb.samples * scale
+        wb.awg['applied_scale_factor'] = float(scale)
+        # recompute utilization after scaling
+        peak_abs_volts2 = float(np.max(np.abs(wb.samples))) if wb.samples.size > 0 else 0.0
+        wb.awg['peak_abs_volts_after'] = peak_abs_volts2
+        wb.awg['peak_utilization_after'] = (peak_abs_volts2 / fullscale) if fullscale > 0 else float('inf')
+
     wb.samples = final_dac_stage(_volts_to_norm(wb.samples, vpp))
     return wb
 

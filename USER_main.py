@@ -54,6 +54,14 @@ component_gains = {
     "noise_white": 1.5,
 }
 mix_headroom = 1.0
+# Amplitude policy:
+#   - 'strict': no silent rescaling; abort if the mix would clip the requested Vpp.
+#   - 'safe'  : apply one global scale factor to fit within Vpp (logs applied_scale_factor).
+amplitude_policy = 'strict'
+
+# Conservative sigma multiplier used by optional clip predictor modes (kept for future use).
+clip_k_sigma = 6.0
+
 
 # 3) INSTRUMENT USAGE FLAGS
 # ------------------------------------------------------------
