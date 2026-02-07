@@ -815,6 +815,8 @@ def build_waveform_bundles(
         bundles['ch4'] = generate_wave_bundle(sel(3), Fs, granularity, preview, segment_length_ms, ch_index=4)
 
     elif mode == 4:
+        a = generate_wave_bundle(sel(0), Fs, granularity, preview, segment_length_ms, ch_index=1)
+        c = generate_wave_bundle(sel(1), Fs, granularity, preview, segment_length_ms, ch_index=2)
         bundles['ch1'] = a
         bundles['ch3'] = WaveBundle(
             samples=a.samples.copy(),
