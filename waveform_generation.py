@@ -202,7 +202,9 @@ def _white_noise_volts(N: int, Fs: float) -> (np.ndarray, dict):
     return _generate_white_noise(N) * USER_main.noise_white_amplitude, {}
 
 
-def _generate_noise_volts(selector: str, N: int, Fs: float, ch_index: int) -> (np.ndarray, np.ndarray, dict):
+def _generate_noise_volts(selector: str, N: int, Fs: float, ch_index: int, seed=None) -> (np.ndarray, np.ndarray, dict):
+    if seed is not None:
+        np.random.seed(int(seed))    
     if selector == "noise_white":
         y, meta = _white_noise_volts(N, Fs)
     elif selector == "noise_pink":
@@ -231,6 +233,13 @@ def process_noise_only(y: np.ndarray, ch: int) -> np.ndarray:
       - noise_soft_clip_strength_ch: float, used by "clip_soft"
     """
     mode = USER_main.noise_post_process_mode_ch.get(ch, "none")
+    policy = getattr(USER_main, 'amplitude_policy', 'strict')
+    if policy == 'strict' and mode != 'none':
+        raise ValueError(
+            f"Strict amplitude policy forbids noise_post_process_mode_ch[{ch}]='{mode}'. "
+            "Set it to 'none' or switch amplitude_policy to 'safe'."
+        )
+
     k = USER_main.noise_soft_clip_strength_ch.get(ch, 2.0)
 
     y = np.asarray(y, dtype=np.float64)
@@ -487,7 +496,7 @@ def _generate_single_bundle(
         # Use segment_length_ms, cap to upload reasonable waveform
         N = _compute_segment_length(Fs, granularity, segment_length_ms, cap=int(16e6))
 
-        y_proc, y, noise_meta = _generate_noise_volts(selector, N, Fs, ch_index)
+        y_proc, y, noise_meta = _generate_noise_volts(selector, N, Fs, ch_index, seed=getattr(USER_main, "noise_seed_current", getattr(USER_main, "noise_seed", None)))
 
         if preview:
             try:
@@ -565,7 +574,7 @@ def _generate_mixed_bundle(
         for name in parts:
             gain = getattr(USER_main, "component_gains", {}).get(name, 1.0)
             if name.startswith("noise_"):
-                proc_noise, raw_noise_local, meta = _generate_noise_volts(name, N, Fs, ch_index)
+                proc_noise, raw_noise_local, meta = _generate_noise_volts(name, N, Fs, ch_index, seed=getattr(USER_main, "noise_seed_current", getattr(USER_main, "noise_seed", None)))
                 raw_noise = raw_noise_local.copy()
                 if meta and noise_meta is None:
                     noise_meta = dict(meta)
@@ -720,6 +729,41 @@ def generate_wave_bundle(
             awg = merged
 
     vpp = float(awg.get("vpp", 1.0))
+    policy = getattr(USER_main, 'amplitude_policy', 'strict')
+    # Preflight: predict clipping against requested Vpp (AWG full-scale is ±Vpp/2).
+    peak_abs_volts = float(np.max(np.abs(wb.samples))) if wb.samples.size > 0 else 0.0
+    fullscale = (vpp / 2.0) if vpp > 0 else 0.0
+    peak_utilization = (peak_abs_volts / fullscale) if fullscale > 0 else float('inf')
+    clip_predicted = peak_utilization > 1.0 + 1e-12
+
+    # Attach diagnostic metadata without overwriting existing keys.
+    if wb.awg is None:
+        wb.awg = {}
+    wb.awg.setdefault('vpp', vpp)
+    wb.awg['amplitude_policy'] = policy
+    wb.awg['peak_abs_volts'] = peak_abs_volts
+    wb.awg['peak_utilization'] = peak_utilization
+    wb.awg['clip_predicted'] = bool(clip_predicted)
+
+    if clip_predicted:
+        if policy == 'strict':
+            raise ValueError(
+                f"Waveform would clip requested Vpp={vpp} V (peak={peak_abs_volts:.6g} V, "
+                f"utilization={peak_utilization:.3f}). Reduce component_gains / noise level / sine amplitude, "
+                "increase vpp, or switch amplitude_policy to 'safe'."
+            )
+        # safe mode: scale the entire waveform to fit within full-scale
+        if fullscale > 0 and peak_abs_volts > 0:
+            scale = 0.999 * (fullscale / peak_abs_volts)
+        else:
+            scale = 1.0
+        wb.samples = wb.samples * scale
+        wb.awg['applied_scale_factor'] = float(scale)
+        # recompute utilization after scaling
+        peak_abs_volts2 = float(np.max(np.abs(wb.samples))) if wb.samples.size > 0 else 0.0
+        wb.awg['peak_abs_volts_after'] = peak_abs_volts2
+        wb.awg['peak_utilization_after'] = (peak_abs_volts2 / fullscale) if fullscale > 0 else float('inf')
+
     wb.samples = final_dac_stage(_volts_to_norm(wb.samples, vpp))
     return wb
 
@@ -773,13 +817,21 @@ def build_waveform_bundles(
         bundles['ch4'] = generate_wave_bundle(sel(3), Fs, granularity, preview, segment_length_ms, ch_index=4)
 
     elif mode == 4:
-        # Dual channel duplicate (Ch.1 = Ch.3, Ch.2 = Ch.4)
         a = generate_wave_bundle(sel(0), Fs, granularity, preview, segment_length_ms, ch_index=1)
         c = generate_wave_bundle(sel(1), Fs, granularity, preview, segment_length_ms, ch_index=2)
         bundles['ch1'] = a
-        bundles['ch3'] = a
+        bundles['ch3'] = WaveBundle(
+            samples=a.samples.copy(),
+            markers=(a.markers.copy() if a.markers is not None else None),
+            awg=(dict(a.awg) if a.awg is not None else None),
+        )
         bundles['ch2'] = c
-        bundles['ch4'] = c
+        bundles['ch4'] = WaveBundle(
+            samples=c.samples.copy(),
+            markers=(c.markers.copy() if c.markers is not None else None),
+            awg=(dict(c.awg) if c.awg is not None else None),
+        )
+
 
     elif mode == 5:
         # Dual channel with markers (Ch.1 and Ch.2)

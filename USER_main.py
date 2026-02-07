@@ -54,6 +54,14 @@ component_gains = {
     "noise_white": 1.5,
 }
 mix_headroom = 1.0
+# Amplitude policy:
+#   - 'strict': no silent rescaling; abort if the mix would clip the requested Vpp.
+#   - 'safe'  : apply one global scale factor to fit within Vpp (logs applied_scale_factor).
+amplitude_policy = 'strict'
+
+# Conservative sigma multiplier used by optional clip predictor modes (kept for future use).
+clip_k_sigma = 6.0
+
 
 # 3) INSTRUMENT USAGE FLAGS
 # ------------------------------------------------------------
@@ -75,7 +83,8 @@ save_data = False
 # Only used if use_spectrum_analyzer = True.
 min_freq = 10.4999e9     # Hz
 max_freq = 10.5001e9    # Hz
-steps    = 0.00001e9      # Hz step used for RBW config
+rbw_hz    = 0.00001e9      # SA resolution bandwidth (RBW) in Hz
+sa_sweep_points = 1001      # Number of points per SA sweep
 
 
 # 6) NOISE / STREAMING SETTINGS
@@ -85,6 +94,9 @@ steps    = 0.00001e9      # Hz step used for RBW config
 # regenerate noise segments on channels whose selector includes 'noise_*'.
 segment_length_ms = 10    # Default: 10 ms per noise segment
 continuous_noise_streaming = False
+min_noise_segment_ms = 50          # enforce if any selector contains noise_
+noise_update_period_ms = 50        # streamer update cadence (ms)
+
 
 noise_fade_fraction = 0.0
 
@@ -94,6 +106,7 @@ noise_brown_amplitude = 0.5
 
 # Calibrated white-noise density in V/sqrt(Hz). If None, disabled.
 noise_density_vrthz = None
+noise_seed = 12345   # set None to disable deterministic noise
 
 # Noise Post Processing:
 noise_post_process_mode_ch = {
@@ -161,7 +174,6 @@ osc_grid = "FULL"           # FULL, HALF, NONE
 
 def sine_combination_waveform1():
     global sweep_current_freq
-    print("sine1 params freq =", sweep_current_freq)
 
     return {
         # signal definition (software, Volts)
@@ -287,6 +299,10 @@ def main():
         channel_3_output.lower(),
         channel_4_output.lower(),
     ]
+    has_noise = any("noise_" in s for s in channel_outputs)
+    if has_noise:
+        segment_length_ms = max(segment_length_ms, min_noise_segment_ms)
+
 
     utilities.generation_mode_check(generation_mode, channel_outputs)
     srd = utilities.get_srd(generation_mode)
@@ -297,6 +313,8 @@ def main():
 
     global noise_density_vrthz
     noise_density_vrthz = defaults.get("waveform", {}).get("noise_density_vrthz", noise_density_vrthz)
+    global noise_seed
+    noise_seed = defaults.get("waveform", {}).get("noise_seed", noise_seed)
 
     # Build initial waveform bundle(s)
     bundles = waveform_generation.build_waveform_bundles(
@@ -326,7 +344,8 @@ def main():
             defaults['instruments']['spectrum_analyzer']['address'],
             defaults['instruments']['spectrum_analyzer']['timeout'],
         )
-        sa_control.configure_sa(sa, min_freq, max_freq, steps)
+        sa_control.configure_sa(sa, min_freq, max_freq, rbw_hz=rbw_hz, vbw_hz=None, points=sa_sweep_points)
+
 
     osc = None
     if use_oscilloscope:
@@ -361,6 +380,7 @@ def main():
     # SA logging helper
     # ---------------------
     def log_sa(step_freq=None):
+        global bundles
         if not use_spectrum_analyzer or sa is None:
             return
 
@@ -368,12 +388,69 @@ def main():
         sa_control.initial_sweep(sa)
 
         # requires sa_control.get_spectrum_data(sa, plot=False) -> (freq_hz, p_dbm)
-        freq_hz, p_dbm = sa_control.get_spectrum_data(sa, plot=True)
+        freq_hz, p_dbm, sa_settings = sa_control.get_spectrum_data(sa, plot=True)
+        rbw_hz = sa_settings.get("rbw_hz", np.nan)
+        vbw_hz = sa_settings.get("vbw_hz", np.nan)
+
+        # -----------------------------
+        # Waveform metadata snapshot
+        # -----------------------------
+        active_key = None
+        for k in ("ch1", "ch2", "ch3", "ch4"):
+            if bundles.get(k) is not None:
+                active_key = k
+                break
+
+        wb = bundles.get(active_key) if active_key else None
+        wmeta = (wb.awg or {}) if wb is not None else {}
+
+        wave_ch = active_key if active_key else ""
+        awg_vpp = float(wmeta.get("vpp", np.nan)) if wmeta.get("vpp", None) is not None else np.nan
+        awg_offs = float(wmeta.get("offs", np.nan)) if wmeta.get("offs", None) is not None else np.nan
+        awg_load = str(wmeta.get("load", ""))
+        
+        wave_fs = float(wmeta.get("Fs", np.nan)) if wmeta.get("Fs", None) is not None else np.nan
+        wave_n  = int(wmeta.get("N", -1)) if wmeta.get("N", None) is not None else -1
+        tseg_s = (float(wave_n) / float(wave_fs)) if (np.isfinite(wave_fs) and wave_fs > 0 and wave_n > 0) else np.nan
+        update_s = (float(noise_update_period_ms) / 1000.0) if noise_update_period_ms is not None else np.nan
+
+        sine_f_req = float(wmeta.get("f_req", np.nan)) if wmeta.get("f_req", None) is not None else np.nan
+        sine_f_eff = float(wmeta.get("f_eff", np.nan)) if wmeta.get("f_eff", None) is not None else np.nan
+
+        sine_ncycles = str(wmeta.get("Ncycles", ""))
+
+        noise_density = wmeta.get("noise_density_vrthz", None)
+        noise_density = float(noise_density) if noise_density is not None else np.nan
+
+        amp_policy = str(wmeta.get("amplitude_policy", ""))
+        peak_util  = float(wmeta.get("peak_utilization", np.nan)) if wmeta.get("peak_utilization", None) is not None else np.nan
+        clip_pred  = bool(wmeta.get("clip_predicted", False)) if wmeta.get("clip_predicted", None) is not None else False
+
 
         rows = [{
             "FREQUENCY (Hz)": float(ff),
             "POWER (dBm)": float(pp),
+            "POWER (dBm/Hz)": (float(pp) - 10.0 * np.log10(float(rbw_hz))) if (rbw_hz is not None and np.isfinite(rbw_hz) and float(rbw_hz) > 0) else np.nan,
             "STEP_FREQUENCY (Hz)": (float(step_freq) if step_freq is not None else np.nan),
+            "RBW (Hz)": float(rbw_hz) if rbw_hz is not None else np.nan,
+            "VBW (Hz)": float(vbw_hz) if vbw_hz is not None else np.nan,
+            "TSEG (s)": tseg_s,
+            "NOISE.UPDATE (s)": update_s,            
+            "WAVE.CH (str)": wave_ch,
+            "AWG.VPP (Vpp)": awg_vpp,
+            "AWG.OFFS (V)": awg_offs,
+            "AWG.LOAD (str)": awg_load,
+            "WAVE.FS (Sa/s)": wave_fs,
+            "WAVE.N (samples)": wave_n,
+            "SINE.F_REQ (Hz)": sine_f_req,
+            "SINE.F_EFF (Hz)": sine_f_eff,
+            "SINE.NCYCLES (str)": sine_ncycles,
+            "NOISE.DENSITY (V/rtHz)": noise_density,
+            "AMP.POLICY (str)": amp_policy,
+            "PEAK.UTIL (xFS)": peak_util,
+            "CLIP.PRED (bool)": clip_pred,
+
+
         } for ff, pp in zip(freq_hz, p_dbm)]
         utilities.append_rows(file_path, rows)
 
@@ -389,6 +466,8 @@ def main():
             Fs=sample_rate,
             granularity=granularity,
             segment_length_ms=segment_length_ms,
+            noise_update_period_ms=noise_update_period_ms,
+
         )
         noise_streamer.start()
 
@@ -399,8 +478,13 @@ def main():
         freqs = np.linspace(sweep_step_start, sweep_step_stop, sweep_step_count)
 
         global sweep_current_freq
-        for f in freqs:
+        for step_idx, f in enumerate(freqs):
             sweep_current_freq = float(f)
+            if noise_seed is not None:
+                noise_seed_current = int(noise_seed) + int(step_idx)
+            else:
+                noise_seed_current = None
+            globals()["noise_seed_current"] = noise_seed_current
 
             bundles = waveform_generation.build_waveform_bundles(
                 generation_mode,
