@@ -36,6 +36,15 @@ class NoiseStreamer:
         self.granularity = granularity
         self.segment_length_ms = segment_length_ms
         self.refresh_factor = refresh_factor
+        # Fixed segment length in samples for this streamer instance.
+        # IMPORTANT: static base and noise must be generated at the same N to avoid boundary discontinuities.
+        self.noise_len = waveform_generation._compute_segment_length(
+            self.Fs,
+            self.granularity,
+            self.segment_length_ms,
+            cap=int(16e6),
+        )
+
 
         mode_to_channels = {
             1: [1],
@@ -67,15 +76,39 @@ class NoiseStreamer:
         self.static_awg = {}
         for ch_num, static_selector, _ in self.noise_channels:
             if static_selector:
-                b = waveform_generation.generate_wave_bundle(
-                    static_selector,
-                    self.Fs,
-                    self.granularity,
-                    preview=False,
-                    segment_length_ms=self.segment_length_ms,
-                )
+                # If static base is a pure sine, force it to the SAME N as the noise segment.
+                # Otherwise, sine may be generated at a "natural" N and later trimmed, reintroducing discontinuities.
+                if static_selector.startswith("sine") and "+" not in static_selector:
+                    b = waveform_generation._generate_sine_bundle_with_N(
+                        static_selector,
+                        self.Fs,
+                        self.noise_len,
+                        preview=False,
+                        params=None,
+                    )
+                    awg = waveform_generation._get_awg_settings_for_selector(static_selector)
+                    if b.awg:
+                        merged = dict(awg or {})
+                        merged.update(b.awg)
+                        awg = merged
+                    vpp = float((awg or {}).get("vpp", 1.0))
+                    b.samples = waveform_generation.final_dac_stage(
+                        waveform_generation._volts_to_norm(b.samples, vpp)
+                    )
+                else:
+                    # For non-sine or mixed static selectors, use the normal generation path.
+                    b = waveform_generation.generate_wave_bundle(
+                        static_selector,
+                        self.Fs,
+                        self.granularity,
+                        preview=False,
+                        segment_length_ms=self.segment_length_ms,
+                        ch_index=ch_num,
+                    )
+
                 self.static_base[ch_num] = np.asarray(b.samples, dtype=np.int8)
                 self.static_awg[ch_num] = dict(b.awg or {})
+
             else:
                 self.static_base[ch_num] = None
                 self.static_awg[ch_num] = {}
@@ -101,24 +134,22 @@ class NoiseStreamer:
 
                 # Generate all noise components
                 noise_volts = []
-                noise_len = waveform_generation._compute_segment_length(
-                    self.Fs,
-                    self.granularity,
-                    self.segment_length_ms,
-                    cap=int(16e6),
-                )
+                noise_len = self.noise_len
                 for nc in noise_comps:
                     yv, _raw, _meta = waveform_generation._generate_noise_volts(nc, noise_len, self.Fs, ch_num)
                     noise_volts.append(np.asarray(yv, dtype=np.float64))
 
-                # Decide common length (min of all available arrays)
-                lengths = [len(nb) for nb in noise_volts]
                 static_arr = self.static_base.get(ch_num)
-                if static_arr is not None:
-                    lengths.append(len(static_arr))
-                if not lengths:
-                    continue
-                N = min(lengths)
+                N = noise_len
+
+                # Safety: static base should have been precomputed at exactly N.
+                if static_arr is not None and len(static_arr) != N:
+                    print(
+                        f"NoiseStreamer ch{ch_num}: static base length {len(static_arr)} != noise_len {N}; "
+                        "using zeros for base to avoid discontinuity."
+                    )
+                    static_arr = None
+
 
                 noise_awg = {}
                 for nc in noise_comps:

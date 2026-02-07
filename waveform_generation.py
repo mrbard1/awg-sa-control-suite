@@ -815,13 +815,19 @@ def build_waveform_bundles(
         bundles['ch4'] = generate_wave_bundle(sel(3), Fs, granularity, preview, segment_length_ms, ch_index=4)
 
     elif mode == 4:
-        # Dual channel duplicate (Ch.1 = Ch.3, Ch.2 = Ch.4)
-        a = generate_wave_bundle(sel(0), Fs, granularity, preview, segment_length_ms, ch_index=1)
-        c = generate_wave_bundle(sel(1), Fs, granularity, preview, segment_length_ms, ch_index=2)
         bundles['ch1'] = a
-        bundles['ch3'] = a
+        bundles['ch3'] = WaveBundle(
+            samples=a.samples.copy(),
+            markers=(a.markers.copy() if a.markers is not None else None),
+            awg=(dict(a.awg) if a.awg is not None else None),
+        )
         bundles['ch2'] = c
-        bundles['ch4'] = c
+        bundles['ch4'] = WaveBundle(
+            samples=c.samples.copy(),
+            markers=(c.markers.copy() if c.markers is not None else None),
+            awg=(dict(c.awg) if c.awg is not None else None),
+        )
+
 
     elif mode == 5:
         # Dual channel with markers (Ch.1 and Ch.2)
