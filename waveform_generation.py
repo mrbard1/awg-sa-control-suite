@@ -18,10 +18,9 @@ from typing import Optional, Dict, List
 import numpy as np
 import matplotlib.pyplot as plt
 
-try:
-    import __main__ as USER_main
-except Exception:
-    import USER_main
+
+import USER_main
+
 
 
 # data structure
@@ -78,7 +77,10 @@ def _get_awg_settings_for_selector(selector: str) -> dict:
         func = getattr(USER_main, func_name)
         params = func()
         return params.get("awg", {}) or {}
-    return {}
+
+    # For noise_* and other non-sine selectors, fall back to USER_main.default_awg if present
+    return getattr(USER_main, "default_awg", {}) or {}
+
 
 def _volts_to_norm(y_volts: np.ndarray, vpp: float) -> np.ndarray:
     vpk_fs = max(float(vpp) / 2.0, 1e-12)

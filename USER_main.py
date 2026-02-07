@@ -49,6 +49,14 @@ channel_2_output = 'none'
 channel_3_output = 'none'
 channel_4_output = 'none'
 
+# Default AWG analog scaling used when a waveform selector does NOT define its own "awg" dict
+# (e.g., noise_white/noise_pink/noise_brown).
+default_awg = {
+    "vpp": 1.0,     # <-- change this to whatever you want (e.g. 2.0, 3.0, etc.)
+    "offs": 0.0,
+    "load": "50",   # "50" or "INF"
+}
+
 component_gains = {
     "sine1": 1.0,
     "noise_white": 1.0,
@@ -57,7 +65,7 @@ mix_headroom = 1.0
 # Amplitude policy:
 #   - 'strict': no silent rescaling; abort if the mix would clip the requested Vpp.
 #   - 'safe'  : apply one global scale factor to fit within Vpp (logs applied_scale_factor).
-amplitude_policy = 'strict'
+amplitude_policy = 'safe'
 
 # Conservative sigma multiplier used by optional clip predictor modes (kept for future use).
 clip_k_sigma = 6.0
@@ -91,7 +99,7 @@ sa_detector = "RMS"      # "RMS" or "AVERage" depending on SA support
 sa_avg_on   = True       # enable SA trace averaging
 sa_avg_count = 20        # number of sweeps to average
 sa_atten_db = 10
-sa_preamp_on = False
+sa_preamp_on = True
 
 # 6) NOISE / STREAMING SETTINGS
 # ------------------------------------------------------------
@@ -405,6 +413,14 @@ def main():
 
         # requires sa_control.get_spectrum_data(sa, plot=False) -> (freq_hz, p_dbm)
         freq_hz, p_dbm, sa_settings = sa_control.get_spectrum_data(sa, plot=True, plot_psd=True)
+        print(
+            f"SA VERIFY | RBW={sa_settings.get('rbw_hz')} Hz | "
+            f"VBW={sa_settings.get('vbw_hz')} Hz | "
+            f"ATTEN={sa_settings.get('atten_db')} dB | "
+            f"PREAMP={sa_settings.get('preamp_state')} | "
+            f"REF={sa_settings.get('ref_level_dbm')} dBm"
+        )
+        
         rbw_hz = sa_settings.get("rbw_hz", np.nan)
         vbw_hz = sa_settings.get("vbw_hz", np.nan)
 
@@ -437,6 +453,7 @@ def main():
 
         noise_density = wmeta.get("noise_density_vrthz", None)
         noise_density = float(noise_density) if noise_density is not None else np.nan
+        print(f"NOISE VERIFY | NOISE.DENSITY (V/rtHz) = {noise_density}")
 
         amp_policy = str(wmeta.get("amplitude_policy", ""))
         peak_util  = float(wmeta.get("peak_utilization", np.nan)) if wmeta.get("peak_utilization", None) is not None else np.nan
