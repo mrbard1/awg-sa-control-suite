@@ -14,7 +14,7 @@ instruments:
 waveform:
   sample_rate: 64000000000                               # in Sa/s for AWG
   num_periods: 1
-  amplitude: 0.5                                         # Vpp
+  amplitude: 1.0                                         # Vpp
   dc_offset: 0                                           # V
   noise_density_vrthz:                                   # V/sqrt(Hz); null disables
   amplitude_policy: strict                           # strict|safe

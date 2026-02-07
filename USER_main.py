@@ -51,7 +51,7 @@ channel_4_output = 'none'
 
 component_gains = {
     "sine1": 1.0,
-    "noise_white": 1.5,
+    "noise_white": 1.0,
 }
 mix_headroom = 1.0
 # Amplitude policy:
@@ -100,7 +100,7 @@ noise_update_period_ms = 50        # streamer update cadence (ms)
 
 noise_fade_fraction = 0.0
 
-noise_white_amplitude = 0.5 # 0.0 to 1.0 recommended (scaling of noise)
+noise_white_amplitude = 0.01 # 0.0 to 1.0 recommended (scaling of noise)
 noise_pink_amplitude = 0.5
 noise_brown_amplitude = 0.5
 
@@ -179,14 +179,14 @@ def sine_combination_waveform1():
         # signal definition (software, Volts)
         'frequencies': [10.5e6],   # Hz (1 Hz to ~2*sample_rate)
         'phases':      [0],
-        'amplitudes':  [0.5],    # Vpk (-0.5 V to +0.5 V)
+        'amplitudes':  [0.4],    # Vpk (-0.5 V to +0.5 V)
         'offsets':     [0],
 
         # awg analog scaling (instrument state)
         "awg": {
             "vpp": 1.0,
             "offs": 0.0,
-            "load": "INF",      # "50" or "INF" (Hi-Z)
+            "load": "50",      # "50" or "INF" (Hi-Z)
         }
     }
     
@@ -282,6 +282,7 @@ def user_waveform4():
 
 def main():
     # Load defaults and user input
+    global segment_length_ms
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H;%M;%S")
     defaults = utilities.load_defaults()
 
