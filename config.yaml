@@ -14,9 +14,9 @@ instruments:
 waveform:
   sample_rate: 64000000000                               # in Sa/s for AWG
   num_periods: 1
-  amplitude: 1.0                                         # Vpp
+  amplitude: 2.0                                         # Vpp
   dc_offset: 0                                           # V
-  noise_density_vrthz:                                   # V/sqrt(Hz); null disables
+  noise_density_vrthz: 3e-7                                  # V/sqrt(Hz); null disables
   amplitude_policy: strict                           # strict|safe
   clip_k_sigma: 6.0                                  # used for conservative clip prediction
   min_noise_segment_ms: 50            # enforce longer segments when noise_* present
@@ -32,6 +32,10 @@ spectrum_analyzer:
   averaging: 1
   resolution_bandwidth:
   video_bandwidth:
+  detector: RMS
+  avg_on: true
+  avg_count: 20
+
 
 oscilloscope:
   timebase_scale:

@@ -19,7 +19,7 @@ def connect_sa(rm, address, timeout):
     return sa
 
 
-def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001):
+def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detector="RMS", avg_on=False, avg_count=20):
     print("Sending *RST...")
     sa.write('*RST')
     print("Waiting for reset to complete...")
@@ -55,20 +55,34 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001):
     sa.write(f':SWEep:POINts {int(points)}')        # Points per sweep
     sa.write(':UNIT:POWer DBM')                     # dBm power units
     sa.write(':TRACe:TYPE WRITe')                   # Trace type
-    sa.write(':DETector POSitive')                  # Positive peak detection
+    sa.write(':DETector {detector}')                  
     sa.write(':INITiate:CONTinuous OFF')            # Single-sweep mode
+        # Averaging
+    if avg_on:
+        sa.write(':AVERage:STATe ON')
+        sa.write(f':AVERage:COUNt {int(avg_count)}')
+        try:
+            sa.write(':AVERage:CLEar')  # clear previous averages if supported
+        except Exception:
+            pass
+    else:
+        sa.write(':AVERage:STATe OFF')
+          
 
 
-def initial_sweep(sa):
-    # Trigger a single sweep and wait for completion.
-    sa.write(':INITiate:IMMediate')  # Trigger sweep
-    completed = sa.query('*OPC?')    # Wait for sweep to finish
+def initial_sweep(sa, sweeps=1):
+    # Trigger sweep(s) and wait for completion
+    for _ in range(int(sweeps)):
+        sa.write(':INITiate:IMMediate')
+        sa.query('*OPC?')
     print("Read Completed!\n")
 
 
-def get_spectrum_data(sa, plot=False):
+
+def get_spectrum_data(sa, plot=False, plot_psd=False):
     power_data = sa.query(':TRAC? TRACE1')
     power_data = np.array([float(x) for x in power_data.split(',')], dtype=float)
+    power_dbm = power_data
 
     start_freq = float(sa.query(':FREQuency:STARt?'))  # Hz
     stop_freq  = float(sa.query(':FREQuency:STOP?'))   # Hz
@@ -126,16 +140,34 @@ def get_spectrum_data(sa, plot=False):
         settings["ref_level_dbm"] = float(sa.query(":DISPlay:WINDow:TRACe:Y:SCALe:RLEVel?"))
     except Exception:
         settings["ref_level_dbm"] = None
- 
+    # --- PSD (dBm/Hz) derived from RBW ---
+    rbw_hz = settings.get("rbw_hz", None)
+    if rbw_hz is not None:
+        try:
+            rbw_hz = float(rbw_hz)
+        except Exception:
+            rbw_hz = None
+
+    power_dbmhz = None
+    if rbw_hz is not None and np.isfinite(rbw_hz) and rbw_hz > 0:
+        power_dbmhz = power_dbm - 10.0 * np.log10(rbw_hz)
+
     if plot:
-        fig, ax = plt.subplots(figsize=(12, 9))
-        ax.plot(freq_hz/1e6, power_data)
-        plt.tight_layout()
-        plt.title('Arbitrary Spectrum Analyzer Readout')
-        plt.xlabel('Frequency (MHz)')
-        plt.ylabel('Power (dBm)')
+        plt.figure()
+        if plot_psd and (power_dbmhz is not None):
+            plt.plot(freq_hz, power_dbmhz)
+            plt.ylabel("PSD (dBm/Hz)")
+            plt.title("Spectrum (RBW-normalized)")
+        else:
+            plt.plot(freq_hz, power_dbm)
+            plt.ylabel("Power (dBm)")
+            plt.title("Spectrum Analyzer Trace")
+
+        plt.xlabel("Frequency (Hz)")
         plt.grid(True)
+        plt.tight_layout()
         plt.show()
+
 
     return freq_hz, power_data, settings
 

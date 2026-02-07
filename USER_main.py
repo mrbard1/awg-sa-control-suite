@@ -44,7 +44,7 @@ sweep_current_freq = sweep_step_start
 #   - or any '+' combination, e.g. 'sine1+noise_white'
 #
 # NOTE: Channel-to-DAC mapping depends on generation_mode (see above).
-channel_1_output = 'sine1+noise_white'
+channel_1_output = 'noise_white'
 channel_2_output = 'none'
 channel_3_output = 'none'
 channel_4_output = 'none'
@@ -81,18 +81,21 @@ save_data = False
 # 5) SPECTRUM ANALYZER SWEEP SETTINGS
 # ------------------------------------------------------------
 # Only used if use_spectrum_analyzer = True.
-min_freq = 10.4999e9     # Hz
-max_freq = 10.5001e9    # Hz
-rbw_hz    = 0.00001e9      # SA resolution bandwidth (RBW) in Hz
+min_freq = 1e6     # Hz
+max_freq = 100e6    # Hz
+rbw_hz    = 100e3      # SA resolution bandwidth (RBW) in Hz
 sa_sweep_points = 1001      # Number of points per SA sweep
 
+sa_detector = "RMS"      # "RMS" or "AVERage" depending on SA support
+sa_avg_on   = True       # enable SA trace averaging
+sa_avg_count = 20        # number of sweeps to average
 
 # 6) NOISE / STREAMING SETTINGS
 # ------------------------------------------------------------
 # segment_length_ms: length of each noise block (also used for mixed waveforms)
 # continuous_noise_streaming: if True, NoiseStreamer will continuously
 # regenerate noise segments on channels whose selector includes 'noise_*'.
-segment_length_ms = 10    # Default: 10 ms per noise segment
+segment_length_ms = 50    # Default: 10 ms per noise segment
 continuous_noise_streaming = False
 min_noise_segment_ms = 50          # enforce if any selector contains noise_
 noise_update_period_ms = 50        # streamer update cadence (ms)
@@ -105,7 +108,7 @@ noise_pink_amplitude = 0.5
 noise_brown_amplitude = 0.5
 
 # Calibrated white-noise density in V/sqrt(Hz). If None, disabled.
-noise_density_vrthz = None
+noise_density_vrthz = 3e-7
 noise_seed = 12345   # set None to disable deterministic noise
 
 # Noise Post Processing:
@@ -184,7 +187,7 @@ def sine_combination_waveform1():
 
         # awg analog scaling (instrument state)
         "awg": {
-            "vpp": 1.0,
+            "vpp": 3.0,
             "offs": 0.0,
             "load": "50",      # "50" or "INF" (Hi-Z)
         }
@@ -316,6 +319,11 @@ def main():
     noise_density_vrthz = defaults.get("waveform", {}).get("noise_density_vrthz", noise_density_vrthz)
     global noise_seed
     noise_seed = defaults.get("waveform", {}).get("noise_seed", noise_seed)
+    
+    global sa_detector, sa_avg_on, sa_avg_count
+    sa_detector = defaults.get("spectrum_analyzer", {}).get("detector", sa_detector)
+    sa_avg_on = defaults.get("spectrum_analyzer", {}).get("avg_on", sa_avg_on)
+    sa_avg_count = defaults.get("spectrum_analyzer", {}).get("avg_count", sa_avg_count)
 
     # Build initial waveform bundle(s)
     bundles = waveform_generation.build_waveform_bundles(
@@ -345,7 +353,7 @@ def main():
             defaults['instruments']['spectrum_analyzer']['address'],
             defaults['instruments']['spectrum_analyzer']['timeout'],
         )
-        sa_control.configure_sa(sa, min_freq, max_freq, rbw_hz=rbw_hz, vbw_hz=None, points=sa_sweep_points)
+        sa_control.configure_sa(sa, min_freq, max_freq, rbw_hz=rbw_hz, vbw_hz=None, points=sa_sweep_points, detector=sa_detector, avg_on=sa_avg_on, avg_count=sa_avg_count)
 
 
     osc = None
@@ -380,16 +388,15 @@ def main():
     # ---------------------
     # SA logging helper
     # ---------------------
-    def log_sa(step_freq=None):
-        global bundles
+    def log_sa(bundles, step_freq=None):
         if not use_spectrum_analyzer or sa is None:
             return
 
         print("LOG_SA writing step =", step_freq)
-        sa_control.initial_sweep(sa)
+        sa_control.initial_sweep(sa, sweeps=(sa_avg_count if sa_avg_on else 1))
 
         # requires sa_control.get_spectrum_data(sa, plot=False) -> (freq_hz, p_dbm)
-        freq_hz, p_dbm, sa_settings = sa_control.get_spectrum_data(sa, plot=True)
+        freq_hz, p_dbm, sa_settings = sa_control.get_spectrum_data(sa, plot=True, plot_psd=True)
         rbw_hz = sa_settings.get("rbw_hz", np.nan)
         vbw_hz = sa_settings.get("vbw_hz", np.nan)
 
@@ -499,14 +506,14 @@ def main():
             awg_control.start_output(awg, generation_mode)
 
             # save SA data for every frequency step
-            log_sa(step_freq=sweep_current_freq)
+            log_sa(bundles, step_freq=sweep_current_freq)
 
     else:
         # Start AWG once
         awg_control.start_output(awg, generation_mode)
 
         # Save SA data once
-        log_sa(step_freq=None)
+        log_sa(bundles, step_freq=None)
 
     # Stop streaming (if used)
     if noise_streamer is not None:

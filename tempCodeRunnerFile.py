@@ -1,2 +1,1 @@
-
-        'offsets':     [0],
+log_sa
