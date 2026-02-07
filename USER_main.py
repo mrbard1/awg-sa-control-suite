@@ -89,6 +89,8 @@ sa_sweep_points = 1001      # Number of points per SA sweep
 sa_detector = "RMS"      # "RMS" or "AVERage" depending on SA support
 sa_avg_on   = True       # enable SA trace averaging
 sa_avg_count = 20        # number of sweeps to average
+sa_atten_db = 10
+sa_preamp_on = False
 
 # 6) NOISE / STREAMING SETTINGS
 # ------------------------------------------------------------
@@ -325,6 +327,11 @@ def main():
     sa_avg_on = defaults.get("spectrum_analyzer", {}).get("avg_on", sa_avg_on)
     sa_avg_count = defaults.get("spectrum_analyzer", {}).get("avg_count", sa_avg_count)
 
+    global sa_atten_db, sa_preamp_on
+    sa_atten_db = defaults.get("spectrum_analyzer", {}).get("atten_db", sa_atten_db)
+    sa_preamp_on = defaults.get("spectrum_analyzer", {}).get("preamp_on", sa_preamp_on)
+    
+
     # Build initial waveform bundle(s)
     bundles = waveform_generation.build_waveform_bundles(
         generation_mode,
@@ -353,7 +360,7 @@ def main():
             defaults['instruments']['spectrum_analyzer']['address'],
             defaults['instruments']['spectrum_analyzer']['timeout'],
         )
-        sa_control.configure_sa(sa, min_freq, max_freq, rbw_hz=rbw_hz, vbw_hz=None, points=sa_sweep_points, detector=sa_detector, avg_on=sa_avg_on, avg_count=sa_avg_count)
+        sa_control.configure_sa(sa, min_freq, max_freq, rbw_hz=rbw_hz, vbw_hz=None, points=sa_sweep_points, detector=sa_detector, avg_on=sa_avg_on, avg_count=sa_avg_count, atten_db=sa_atten_db, preamp_on=sa_preamp_on)
 
 
     osc = None

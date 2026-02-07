@@ -19,7 +19,7 @@ def connect_sa(rm, address, timeout):
     return sa
 
 
-def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detector="RMS", avg_on=False, avg_count=20):
+def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detector="RMS", avg_on=False, avg_count=20, atten_db=None, preamp_on=None):
     print("Sending *RST...")
     sa.write('*RST')
     print("Waiting for reset to complete...")
@@ -44,6 +44,17 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
     sa.write(f':FREQuency:CENTer {cent_ghz}GHz')    # Center frequency
     sa.write(f':FREQuency:SPAN {span_mhz}MHz')      # Frequency span
 
+    # --- Attenuation ---
+    if atten_db is not None:
+        sa.write(':POWer:ATTenuation:AUTO OFF')
+        sa.write(f':POWer:ATTenuation {atten_db}')
+
+    # --- Preamplifier ---
+    if preamp_on is not None:
+        state = 'ON' if preamp_on else 'OFF'
+        sa.write(f':POWer:GAIN:STATe {state}')
+
+
     # RBW/VBW (Hz). rbw_hz is REQUIRED; vbw_hz optional (None => AUTO)
     sa.write(f':BANDwidth {float(rbw_hz)}Hz')       # Resolution bandwidth
     if vbw_hz is None:
@@ -55,9 +66,9 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
     sa.write(f':SWEep:POINts {int(points)}')        # Points per sweep
     sa.write(':UNIT:POWer DBM')                     # dBm power units
     sa.write(':TRACe:TYPE WRITe')                   # Trace type
-    sa.write(':DETector {detector}')                  
+    sa.write(f':DETector {detector}')                  
     sa.write(':INITiate:CONTinuous OFF')            # Single-sweep mode
-        # Averaging
+    # Averaging
     if avg_on:
         sa.write(':AVERage:STATe ON')
         sa.write(f':AVERage:COUNt {int(avg_count)}')
@@ -158,10 +169,17 @@ def get_spectrum_data(sa, plot=False, plot_psd=False):
             plt.plot(freq_hz, power_dbmhz)
             plt.ylabel("PSD (dBm/Hz)")
             plt.title("Spectrum (RBW-normalized)")
+            plt.xlabel("Frequency (Hz)")
+            plt.grid(True)
+            plt.tight_layout()
+            plt.figure()
+            plt.plot(freq_hz, power_dbm)
+            plt.ylabel("Power (dBm)")
+            plt.title("Raw Spectrum Analyzer Trace")
         else:
             plt.plot(freq_hz, power_dbm)
             plt.ylabel("Power (dBm)")
-            plt.title("Spectrum Analyzer Trace")
+            plt.title("Raw Spectrum Analyzer Trace")
 
         plt.xlabel("Frequency (Hz)")
         plt.grid(True)
