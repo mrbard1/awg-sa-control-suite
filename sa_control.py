@@ -90,7 +90,7 @@ def initial_sweep(sa, sweeps=1):
 
 
 
-def get_spectrum_data(sa, plot=False, plot_psd=False):
+def get_spectrum_data(sa, plot=False, plot_psd=False, preamp_gain_db=0.0):
     power_data = sa.query(':TRAC? TRACE1')
     power_data = np.array([float(x) for x in power_data.split(',')], dtype=float)
     power_dbm = power_data
@@ -146,6 +146,15 @@ def get_spectrum_data(sa, plot=False, plot_psd=False):
         settings["preamp_state"] = sa.query(":POWer:GAIN:STATe?").strip()
     except Exception:
         settings["preamp_state"] = None
+    
+    preamp_on = str(settings.get("preamp_state", "")).strip().upper() in ("1", "ON")
+    try:
+        preamp_gain_db = float(preamp_gain_db)
+    except Exception:
+        preamp_gain_db = 0.0
+
+    settings["preamp_on"] = preamp_on
+    settings["preamp_gain_db"] = preamp_gain_db if preamp_on else 0.0
 
     try:
         settings["ref_level_dbm"] = float(sa.query(":DISPlay:WINDow:TRACe:Y:SCALe:RLEVel?"))
@@ -160,14 +169,16 @@ def get_spectrum_data(sa, plot=False, plot_psd=False):
             rbw_hz = None
 
     power_dbmhz = None
+    power_dbmhz_corr = None
     if rbw_hz is not None and np.isfinite(rbw_hz) and rbw_hz > 0:
         power_dbmhz = power_dbm - 10.0 * np.log10(rbw_hz)
+        power_dbmhz_corr = power_dbmhz - settings["preamp_gain_db"]
 
     if plot:
         plt.figure()
-        if plot_psd and (power_dbmhz is not None):
-            plt.plot(freq_hz, power_dbmhz)
-            plt.ylabel("PSD (dBm/Hz)")
+        if plot_psd and (power_dbmhz_corr is not None):
+            plt.plot(freq_hz, power_dbmhz_corr)
+            plt.ylabel("PSD (dBm/Hz) (preamp-corrected)")
             plt.title("Spectrum (RBW-normalized)")
             plt.xlabel("Frequency (Hz)")
             plt.grid(True)

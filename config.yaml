@@ -37,6 +37,7 @@ spectrum_analyzer:
   avg_count: 20
   atten_db: 10
   preamp_on: false
+  preamp_gain_db: 10                # dB
 
 
 oscilloscope:

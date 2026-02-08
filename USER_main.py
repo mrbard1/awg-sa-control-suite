@@ -412,7 +412,9 @@ def main():
         sa_control.initial_sweep(sa, sweeps=(sa_avg_count if sa_avg_on else 1))
 
         # requires sa_control.get_spectrum_data(sa, plot=False) -> (freq_hz, p_dbm)
-        freq_hz, p_dbm, sa_settings = sa_control.get_spectrum_data(sa, plot=True, plot_psd=True)
+        preamp_gain_db = float(cfg.get("spectrum_analyzer", {}).get("preamp_gain_db", 0.0))
+        freq_hz, p_dbm, sa_settings = sa_control.get_spectrum_data(sa, plot=True, plot_psd=True, preamp_gain_db=preamp_gain_db)
+
         print(
             f"SA VERIFY | RBW={sa_settings.get('rbw_hz')} Hz | "
             f"VBW={sa_settings.get('vbw_hz')} Hz | "
@@ -463,7 +465,9 @@ def main():
         rows = [{
             "FREQUENCY (Hz)": float(ff),
             "POWER (dBm)": float(pp),
-            "POWER (dBm/Hz)": (float(pp) - 10.0 * np.log10(float(rbw_hz))) if (rbw_hz is not None and np.isfinite(rbw_hz) and float(rbw_hz) > 0) else np.nan,
+            "PREAMP.ON": int(bool(sa_settings.get("preamp_on", False))),
+            "PREAMP.GAIN_DB": float(sa_settings.get("preamp_gain_db", 0.0) or 0.0),
+            "POWER (dBm/Hz)": (float(pp) - 10.0 * np.log10(float(rbw_hz)) - float(sa_settings.get("preamp_gain_db", 0.0) or 0.0)) if (rbw_hz is not None and np.isfinite(rbw_hz) and float(rbw_hz) > 0) else np.nan,
             "STEP_FREQUENCY (Hz)": (float(step_freq) if step_freq is not None else np.nan),
             "RBW (Hz)": float(rbw_hz) if rbw_hz is not None else np.nan,
             "VBW (Hz)": float(vbw_hz) if vbw_hz is not None else np.nan,
