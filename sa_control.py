@@ -57,11 +57,11 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
     # --- Preamplifier (SA mode) ---
     if preamp_on is not None:
         state = 'ON' if preamp_on else 'OFF'
-        sa.write(":SENSe:POWer:RF:GAIN:AUTO OFF")
+        #sa.write(":SENSe:POWer:RF:GAIN:AUTO OFF")
         sa.write(f':SENSe:POWer:RF:GAIN:STATe {state}')
         sa.query('*OPC?')
         print("ERR after preamp:", sa.query(':SYST:ERR?').strip())
-        print("PREAMP auto:", sa.query(":SENSe:POWer:RF:GAIN:AUTO?").strip())
+        #print("PREAMP auto:", sa.query(":SENSe:POWer:RF:GAIN:AUTO?").strip())
         print("PREAMP now:", sa.query(':SENSe:POWer:RF:GAIN:STATe?').strip())
 
 
