@@ -121,6 +121,7 @@ noise_brown_amplitude = 0.5
 
 # Calibrated white-noise density in V/sqrt(Hz). If None, disabled.
 noise_density_vrthz = 3e-6
+noise_bw_hz = None  # Effective noise bandwidth in Hz; None uses min(Fs/2, 200e6)
 noise_seed = 12345   # set None to disable deterministic noise
 
 # Noise Post Processing:
@@ -329,6 +330,8 @@ def main():
 
     global noise_density_vrthz
     noise_density_vrthz = defaults.get("waveform", {}).get("noise_density_vrthz", noise_density_vrthz)
+    global noise_bw_hz
+    noise_bw_hz = defaults.get("waveform", {}).get("noise_bw_hz", noise_bw_hz)
     global noise_seed
     noise_seed = defaults.get("waveform", {}).get("noise_seed", noise_seed)
     

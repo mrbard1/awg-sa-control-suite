@@ -192,16 +192,26 @@ def _generate_pink_noise(N: int) -> np.ndarray:
 def _white_noise_volts(N: int, Fs: float) -> (np.ndarray, dict):
     density = getattr(USER_main, "noise_density_vrthz", None)
     if density is not None and float(density) > 0:
-        sigma = float(density) * math.sqrt(Fs / 2.0)
+        noise_bw_hz = getattr(USER_main, "noise_bw_hz", None)
+        if noise_bw_hz is None or float(noise_bw_hz) <= 0:
+            noise_bw_hz_used = min(Fs / 2.0, 200e6)
+        else:
+            noise_bw_hz_used = min(float(noise_bw_hz), Fs / 2.0)
+        sigma = float(density) * math.sqrt(noise_bw_hz_used)
         y = sigma * np.random.randn(N).astype(np.float64)
         meta = {
             "noise_density_vrthz": float(density),
             "noise_sigma_volts": float(sigma),
+            "noise_bw_hz_used": float(noise_bw_hz_used),
             "Fs": float(Fs),
             "N": int(N),
         }
         return y, meta
-    return _generate_white_noise(N) * USER_main.noise_white_amplitude, {}
+    return _generate_white_noise(N) * USER_main.noise_white_amplitude, {
+        "noise_density_vrthz": None,
+        "noise_sigma_volts": None,
+        "noise_bw_hz_used": None,
+    }
 
 
 def _generate_noise_volts(selector: str, N: int, Fs: float, ch_index: int, seed=None) -> (np.ndarray, np.ndarray, dict):
