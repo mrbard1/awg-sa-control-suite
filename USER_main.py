@@ -343,6 +343,10 @@ def main():
     sa_preamp_gain_db = float(defaults.get("spectrum analyzer", {}).get("preamp_gain_db", sa_preamp_gain_db))
     sa_vbw_hz = defaults.get("spectrum_analyzer", {}).get("video_bandwidth", sa_vbw_hz)
 
+
+    print("USING noise_density_vrthz =", noise_density_vrthz)
+
+
     # Build initial waveform bundle(s)
     bundles = waveform_generation.build_waveform_bundles(
         generation_mode,
