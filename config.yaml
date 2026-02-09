@@ -16,7 +16,7 @@ waveform:
   num_periods: 1
   amplitude: 2.0                                         # Vpp
   dc_offset: 0                                           # V
-  noise_density_vrthz: 3e-6                                  # V/sqrt(Hz); null disables
+  noise_density_vrthz: 1.5e-6                                  # V/sqrt(Hz); null disables
   noise_bw_hz: 200e6                                      # Effective noise bandwidth (Hz); null -> min(Fs/2, 200e6)
   amplitude_policy: strict                           # strict|safe
   clip_k_sigma: 6.0                                  # used for conservative clip prediction

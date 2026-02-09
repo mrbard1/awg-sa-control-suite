@@ -120,7 +120,7 @@ noise_pink_amplitude = 0.5
 noise_brown_amplitude = 0.5
 
 # Calibrated white-noise density in V/sqrt(Hz). If None, disabled.
-noise_density_vrthz = 3e-6
+noise_density_vrthz = 1.5e-6
 noise_bw_hz = None  # Effective noise bandwidth in Hz; None uses min(Fs/2, 200e6)
 noise_seed = 12345   # set None to disable deterministic noise
 
