@@ -12,6 +12,14 @@ import pyvisa
 import time
 
 
+def _q(sa, cmd, default=""):
+    try:
+        return sa.query(cmd).strip()
+    except Exception as e:
+        print(f"Query failed {cmd}: {e}")
+        return default
+
+
 def connect_sa(rm, address, timeout):
     sa = rm.open_resource(address)
     sa.timeout = timeout
@@ -45,23 +53,26 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
     sa.write(f':FREQuency:CENTer {cent_ghz}GHz')    # Center frequency
     sa.write(f':FREQuency:SPAN {span_mhz}MHz')      # Frequency span
 
-    # --- Attenuation ---
+    # --- Attenuation (SA mode) ---
     if atten_db is not None:
-        sa.write(':POWer:ATTenuation:AUTO OFF')
-        sa.write(f':POWer:ATTenuation {atten_db}')
-        sa.query("*OPC?")
-        print("ERR after atten:", sa.query(":SYST:ERR?").strip())
-        print("ATTEN auto:", sa.query(":SENSe:POWer:RF:ATTenuation:AUTO?").strip())
-        print("ATTEN now:", sa.query(":SENSe:POWer:RF:ATTenuation?").strip())
+        # Use SA-mode headers consistently
+        sa.write(":SENSe:POWer:RF:ATTenuation:AUTO OFF")
+        sa.write(f":SENSe:POWer:RF:ATTenuation {float(atten_db)}")
+        _q(sa, "*OPC?")
+
+        print("ERR after atten:", _q(sa, ":SYST:ERR?"))
+        print("ATTEN auto:", _q(sa, ":SENSe:POWer:RF:ATTenuation:AUTO?"))
+        print("ATTEN now :", _q(sa, ":SENSe:POWer:RF:ATTenuation?"))
+
 
     # --- Preamplifier (SA mode) ---
     if preamp_on is not None:
         state = 'ON' if preamp_on else 'OFF'
-        #sa.write(":SENSe:POWer:RF:GAIN:AUTO OFF")
+        sa.write(":SENSe:POWer:RF:GAIN:AUTO OFF")
         sa.write(f':SENSe:POWer:RF:GAIN:STATe {state}')
         sa.query('*OPC?')
         print("ERR after preamp:", sa.query(':SYST:ERR?').strip())
-        #print("PREAMP auto:", sa.query(":SENSe:POWer:RF:GAIN:AUTO?").strip())
+        print("PREAMP auto:", sa.query(":SENSe:POWer:RF:GAIN:AUTO?").strip())
         print("PREAMP now:", sa.query(':SENSe:POWer:RF:GAIN:STATe?').strip())
 
 
