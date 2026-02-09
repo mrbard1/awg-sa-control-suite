@@ -12,6 +12,14 @@ import pyvisa
 import time
 
 
+def _q(sa, cmd, default=""):
+    try:
+        return sa.query(cmd).strip()
+    except Exception as e:
+        print(f"Query failed {cmd}: {e}")
+        return default
+
+
 def connect_sa(rm, address, timeout):
     sa = rm.open_resource(address)
     sa.timeout = timeout
@@ -45,38 +53,41 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
     sa.write(f':FREQuency:CENTer {cent_ghz}GHz')    # Center frequency
     sa.write(f':FREQuency:SPAN {span_mhz}MHz')      # Frequency span
 
-    # --- Attenuation ---
+    # --- Attenuation (SA mode) ---
     if atten_db is not None:
-        sa.write(':POWer:ATTenuation:AUTO OFF')
-        sa.write(f':POWer:ATTenuation {atten_db}')
-        sa.query("*OPC?")
-        print("ERR after atten:", sa.query(":SYST:ERR?").strip())
-        print("ATTEN auto:", sa.query(":SENSe:POWer:RF:ATTenuation:AUTO?").strip())
-        print("ATTEN now:", sa.query(":SENSe:POWer:RF:ATTenuation?").strip())
+        # Use SA-mode headers consistently
+        sa.write(":SENSe:POWer:RF:ATTenuation:AUTO OFF")
+        sa.write(f":SENSe:POWer:RF:ATTenuation {float(atten_db)}")
+        _q(sa, "*OPC?")
+
+        print("ERR after atten:", _q(sa, ":SYST:ERR?"))
+        print("ATTEN auto:", _q(sa, ":SENSe:POWer:RF:ATTenuation:AUTO?"))
+        print("ATTEN now :", _q(sa, ":SENSe:POWer:RF:ATTenuation?"))
+
 
     # --- Preamplifier (SA mode) ---
     if preamp_on is not None:
-        state = 'ON' if preamp_on else 'OFF'
-        sa.write(":SENSe:POWer:RF:GAIN:AUTO OFF")
-        sa.write(f':SENSe:POWer:RF:GAIN:STATe {state}')
-        sa.query('*OPC?')
-        print("ERR after preamp:", sa.query(':SYST:ERR?').strip())
-        print("PREAMP auto:", sa.query(":SENSe:POWer:RF:GAIN:AUTO?").strip())
-        print("PREAMP now:", sa.query(':SENSe:POWer:RF:GAIN:STATe?').strip())
+        state = "ON" if preamp_on else "OFF"
+
+        # NOTE: Your box threw -113 on GAIN:AUTO, so do NOT send it.
+        # sa.write(":SENSe:POWer:RF:GAIN:AUTO OFF")  # <-- remove / unsupported on your firmware
+
+        sa.write(f":SENSe:POWer:RF:GAIN:STATe {state}")
+        _q(sa, "*OPC?")
+
+        print("ERR after preamp:", _q(sa, ":SYST:ERR?"))
+        print("PREAMP now :", _q(sa, ":SENSe:POWer:RF:GAIN:STATe?"))
 
 
-    print("ATTEN now:", sa.query(":POWer:ATTenuation?").strip())
-    print("PREAMP now:", sa.query(":POWer:GAIN:STATe?").strip())
-    sa.write(f':POW:GAIN {state}')   # ON / OFF
-    sa.query("*OPC?")
-    print("ERR after preamp:", sa.query(":SYST:ERR?").strip())
-    print("PREAMP now:", sa.query(":POW:GAIN?").strip())
+    # --- Snapshot (safe queries only) ---
+    print("ATTEN (SA hdr):", _q(sa, ":SENSe:POWer:RF:ATTenuation?"))
+    print("PREAMP (SA hdr):", _q(sa, ":SENSe:POWer:RF:GAIN:STATe?"))
+    print("REF level:", _q(sa, ":DISP:WIND:TRAC:Y:SCAL:RLEV?"))
+
+    # Avoid this: it caused VI_ERROR_CONN_LOST on your setup
+    # print("OVR?  :", _q(sa, ":CALC:MEAS:WAOR?"))
 
 
-    print("PREAMP:", sa.query(":SENSe:POWer:RF:GAIN:STATe?").strip())
-    print("ATTEN :", sa.query(":SENSe:POWer:RF:ATTenuation?").strip())
-    print("REF   :", sa.query(":DISP:WIND:TRAC:Y:SCAL:RLEV?").strip())
-    print("OVR?  :", sa.query(":CALC:MEAS:WAOR?").strip())  # ADC over-range warning status
 
 
     # RBW/VBW (Hz). rbw_hz is REQUIRED; vbw_hz optional (None => AUTO)
