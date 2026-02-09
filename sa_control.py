@@ -16,6 +16,7 @@ def connect_sa(rm, address, timeout):
     sa = rm.open_resource(address)
     sa.timeout = timeout
     print("SA Identity:", sa.query("*IDN?"))
+    print("OPT:", sa.query("*OPT?").strip())
     return sa
 
 
@@ -55,6 +56,10 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
         sa.write(f':POWer:GAIN:STATe {state}')
 
     print("ATTEN now:", sa.query(":POWer:ATTenuation?").strip())
+    print("PREAMP now:", sa.query(":POWer:GAIN:STATe?").strip())
+    sa.write(f':POWer:GAIN:STATe {state}')
+    sa.query("*OPC?")
+    print("ERR after preamp:", sa.query(":SYST:ERR?").strip())
     print("PREAMP now:", sa.query(":POWer:GAIN:STATe?").strip())
 
 
