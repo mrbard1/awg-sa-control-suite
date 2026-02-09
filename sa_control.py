@@ -49,13 +49,19 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
     if atten_db is not None:
         sa.write(':POWer:ATTenuation:AUTO OFF')
         sa.write(f':POWer:ATTenuation {atten_db}')
+        sa.query("*OPC?")
+        print("ERR after atten:", sa.query(":SYST:ERR?").strip())
+        print("ATTEN auto:", sa.query(":SENSe:POWer:RF:ATTenuation:AUTO?").strip())
+        print("ATTEN now:", sa.query(":SENSe:POWer:RF:ATTenuation?").strip())
 
     # --- Preamplifier (SA mode) ---
     if preamp_on is not None:
         state = 'ON' if preamp_on else 'OFF'
+        sa.write(":SENSe:POWer:RF:GAIN:AUTO OFF")
         sa.write(f':SENSe:POWer:RF:GAIN:STATe {state}')
         sa.query('*OPC?')
         print("ERR after preamp:", sa.query(':SYST:ERR?').strip())
+        print("PREAMP auto:", sa.query(":SENSe:POWer:RF:GAIN:AUTO?").strip())
         print("PREAMP now:", sa.query(':SENSe:POWer:RF:GAIN:STATe?').strip())
 
 
