@@ -73,6 +73,12 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
     print("PREAMP now:", sa.query(":POW:GAIN?").strip())
 
 
+    print("PREAMP:", sa.query(":SENSe:POWer:RF:GAIN:STATe?").strip())
+    print("ATTEN :", sa.query(":SENSe:POWer:RF:ATTenuation?").strip())
+    print("REF   :", sa.query(":DISP:WIND:TRAC:Y:SCAL:RLEV?").strip())
+    print("OVR?  :", sa.query(":CALC:MEAS:WAOR?").strip())  # ADC over-range warning status
+
+
     # RBW/VBW (Hz). rbw_hz is REQUIRED; vbw_hz optional (None => AUTO)
     sa.write(f':BANDwidth {float(rbw_hz)}Hz')       # Resolution bandwidth
     if vbw_hz is None:
