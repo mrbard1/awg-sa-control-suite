@@ -50,10 +50,14 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
         sa.write(':POWer:ATTenuation:AUTO OFF')
         sa.write(f':POWer:ATTenuation {atten_db}')
 
-    # --- Preamplifier ---
+    # --- Preamplifier (SA mode) ---
     if preamp_on is not None:
         state = 'ON' if preamp_on else 'OFF'
-        sa.write(f':POWer:GAIN:STATe {state}')
+        sa.write(f':SENSe:POWer:RF:GAIN:STATe {state}')
+        sa.query('*OPC?')
+        print("ERR after preamp:", sa.query(':SYST:ERR?').strip())
+        print("PREAMP now:", sa.query(':SENSe:POWer:RF:GAIN:STATe?').strip())
+
 
     print("ATTEN now:", sa.query(":POWer:ATTenuation?").strip())
     print("PREAMP now:", sa.query(":POWer:GAIN:STATe?").strip())
@@ -151,7 +155,7 @@ def get_spectrum_data(sa, plot=False, plot_psd=False, plot_both=False, preamp_ga
         settings["atten_db"] = None
 
     try:
-        settings["preamp_state"] = sa.query(":POWer:GAIN:STATe?").strip()
+        settings["preamp_state"] = sa.query("::SENSe:POWer:RF:GAIN:STATe?").strip()
     except Exception:
         settings["preamp_state"] = None
     
