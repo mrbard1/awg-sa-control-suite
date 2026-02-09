@@ -67,28 +67,22 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
 
     # --- Preamplifier (SA mode) ---
     if preamp_on is not None:
-        state = 'ON' if preamp_on else 'OFF'
-        sa.write(":SENSe:POWer:RF:GAIN:AUTO OFF")
-        sa.write(f':SENSe:POWer:RF:GAIN:STATe {state}')
-        sa.query('*OPC?')
-        print("ERR after preamp:", sa.query(':SYST:ERR?').strip())
-        print("PREAMP auto:", sa.query(":SENSe:POWer:RF:GAIN:AUTO?").strip())
-        print("PREAMP now:", sa.query(':SENSe:POWer:RF:GAIN:STATe?').strip())
+        state = "ON" if preamp_on else "OFF"
+
+        # NOTE: Your box threw -113 on GAIN:AUTO, so do NOT send it.
+        # sa.write(":SENSe:POWer:RF:GAIN:AUTO OFF")  # <-- remove / unsupported on your firmware
+
+        sa.write(f":SENSe:POWer:RF:GAIN:STATe {state}")
+        _q(sa, "*OPC?")
+
+        print("ERR after preamp:", _q(sa, ":SYST:ERR?"))
+        print("PREAMP now :", _q(sa, ":SENSe:POWer:RF:GAIN:STATe?"))
 
 
-    print("ATTEN now:", sa.query(":POWer:ATTenuation?").strip())
-    print("PREAMP now:", sa.query(":POWer:GAIN:STATe?").strip())
-    sa.write(f':POW:GAIN {state}')   # ON / OFF
-    sa.query("*OPC?")
-    print("ERR after preamp:", sa.query(":SYST:ERR?").strip())
-    print("PREAMP now:", sa.query(":POW:GAIN?").strip())
-
-
-    print("PREAMP:", sa.query(":SENSe:POWer:RF:GAIN:STATe?").strip())
-    print("ATTEN :", sa.query(":SENSe:POWer:RF:ATTenuation?").strip())
-    print("REF   :", sa.query(":DISP:WIND:TRAC:Y:SCAL:RLEV?").strip())
-    print("OVR?  :", sa.query(":CALC:MEAS:WAOR?").strip())  # ADC over-range warning status
-
+    # --- Snapshot (safe queries only) ---
+    print("ATTEN (SA hdr):", _q(sa, ":SENSe:POWer:RF:ATTenuation?"))
+    print("PREAMP (SA hdr):", _q(sa, ":SENSe:POWer:RF:GAIN:STATe?"))
+    print("REF level:", _q(sa, ":DISP:WIND:TRAC:Y:SCAL:RLEV?"))
 
     # RBW/VBW (Hz). rbw_hz is REQUIRED; vbw_hz optional (None => AUTO)
     sa.write(f':BANDwidth {float(rbw_hz)}Hz')       # Resolution bandwidth
