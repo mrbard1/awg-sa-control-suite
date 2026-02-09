@@ -35,7 +35,7 @@ spectrum_analyzer:
   detector: RMS
   avg_on: true
   avg_count: 20
-  atten_db: 10
+  atten_db: 
   preamp_on: false
   preamp_gain_db: 10                # dB
 

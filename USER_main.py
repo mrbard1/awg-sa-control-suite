@@ -98,8 +98,9 @@ sa_vbw_hz = 30e3
 sa_detector = "RMS"      # "RMS" or "AVERage" depending on SA support
 sa_avg_on   = True       # enable SA trace averaging
 sa_avg_count = 20        # number of sweeps to average
-sa_atten_db = 10
+sa_atten_db = 0
 sa_preamp_on = True
+sa_preamp_gain_db = 10      #dB set SA preamp gain.
 
 # 6) NOISE / STREAMING SETTINGS
 # ------------------------------------------------------------
@@ -336,10 +337,11 @@ def main():
     sa_avg_on = defaults.get("spectrum_analyzer", {}).get("avg_on", sa_avg_on)
     sa_avg_count = defaults.get("spectrum_analyzer", {}).get("avg_count", sa_avg_count)
 
-    global sa_atten_db, sa_preamp_on, sa_vbw_hz
+    global sa_atten_db, sa_preamp_on, sa_vbw_hz, sa_preamp_gain_db
     sa_atten_db = defaults.get("spectrum_analyzer", {}).get("atten_db", sa_atten_db)
     sa_preamp_on = defaults.get("spectrum_analyzer", {}).get("preamp_on", sa_preamp_on)
-    sa_vbw_hz = defaults.get("spectrum_analyzer", {}).get("video_bandwidth", sa_preamp_on)
+    sa_preamp_gain_db = float(defaults.get("spectrum analyzer", {}).get("preamp_gain_db", sa_preamp_gain_db))
+    sa_vbw_hz = defaults.get("spectrum_analyzer", {}).get("video_bandwidth", sa_vbw_hz)
 
     # Build initial waveform bundle(s)
     bundles = waveform_generation.build_waveform_bundles(
@@ -412,9 +414,15 @@ def main():
         sa_control.initial_sweep(sa, sweeps=(sa_avg_count if sa_avg_on else 1))
 
         # requires sa_control.get_spectrum_data(sa, plot=False) -> (freq_hz, p_dbm)
-        preamp_gain_db = float(cfg.get("spectrum_analyzer", {}).get("preamp_gain_db", 0.0))
-        freq_hz, p_dbm, sa_settings = sa_control.get_spectrum_data(sa, plot=True, plot_psd=True, preamp_gain_db=preamp_gain_db)
+        
 
+        freq_hz, p_dbm, sa_settings = sa_control.get_spectrum_data(
+            sa,
+            plot=True,
+            plot_psd=True,
+            plot_both=True,
+            preamp_gain_db=sa_preamp_gain_db
+        )
         print(
             f"SA VERIFY | RBW={sa_settings.get('rbw_hz')} Hz | "
             f"VBW={sa_settings.get('vbw_hz')} Hz | "

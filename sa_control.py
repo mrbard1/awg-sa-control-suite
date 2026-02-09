@@ -90,7 +90,7 @@ def initial_sweep(sa, sweeps=1):
 
 
 
-def get_spectrum_data(sa, plot=False, plot_psd=False, preamp_gain_db=0.0):
+def get_spectrum_data(sa, plot=False, plot_psd=False, plot_both=False, preamp_gain_db=0.0):
     power_data = sa.query(':TRAC? TRACE1')
     power_data = np.array([float(x) for x in power_data.split(',')], dtype=float)
     power_dbm = power_data
@@ -175,27 +175,28 @@ def get_spectrum_data(sa, plot=False, plot_psd=False, preamp_gain_db=0.0):
         power_dbmhz_corr = power_dbmhz - settings["preamp_gain_db"]
 
     if plot:
-        plt.figure()
-        if plot_psd and (power_dbmhz_corr is not None):
+        # Raw power (dBm)
+        if plot_both or (not plot_psd):
+            plt.figure()
+            plt.plot(freq_hz, power_dbm)
+            plt.ylabel("Power (dBm)")
+            plt.title("Raw Spectrum Analyzer Trace")
+            plt.xlabel("Frequency (Hz)")
+            plt.grid(True)
+            plt.tight_layout()
+            plt.show()
+
+        # PSD (dBm/Hz), optionally preamp-corrected
+        if (plot_both or plot_psd) and (power_dbmhz_corr is not None):
+            plt.figure()
             plt.plot(freq_hz, power_dbmhz_corr)
             plt.ylabel("PSD (dBm/Hz) (preamp-corrected)")
             plt.title("Spectrum (RBW-normalized)")
             plt.xlabel("Frequency (Hz)")
             plt.grid(True)
             plt.tight_layout()
-            plt.figure()
-            plt.plot(freq_hz, power_dbm)
-            plt.ylabel("Power (dBm)")
-            plt.title("Raw Spectrum Analyzer Trace")
-        else:
-            plt.plot(freq_hz, power_dbm)
-            plt.ylabel("Power (dBm)")
-            plt.title("Raw Spectrum Analyzer Trace")
+            plt.show()
 
-        plt.xlabel("Frequency (Hz)")
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
 
 
     return freq_hz, power_data, settings
