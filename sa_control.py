@@ -57,10 +57,10 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
 
     print("ATTEN now:", sa.query(":POWer:ATTenuation?").strip())
     print("PREAMP now:", sa.query(":POWer:GAIN:STATe?").strip())
-    sa.write(f':POWer:GAIN:STATe {state}')
+    sa.write(f':POW:GAIN {state}')   # ON / OFF
     sa.query("*OPC?")
     print("ERR after preamp:", sa.query(":SYST:ERR?").strip())
-    print("PREAMP now:", sa.query(":POWer:GAIN:STATe?").strip())
+    print("PREAMP now:", sa.query(":POW:GAIN?").strip())
 
 
     # RBW/VBW (Hz). rbw_hz is REQUIRED; vbw_hz optional (None => AUTO)
