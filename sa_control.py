@@ -54,6 +54,9 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
         state = 'ON' if preamp_on else 'OFF'
         sa.write(f':POWer:GAIN:STATe {state}')
 
+    print("ATTEN now:", sa.query(":POWer:ATTenuation?").strip())
+    print("PREAMP now:", sa.query(":POWer:GAIN:STATe?").strip())
+
 
     # RBW/VBW (Hz). rbw_hz is REQUIRED; vbw_hz optional (None => AUTO)
     sa.write(f':BANDwidth {float(rbw_hz)}Hz')       # Resolution bandwidth
