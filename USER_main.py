@@ -65,7 +65,7 @@ mix_headroom = 1.0
 # Amplitude policy:
 #   - 'strict': no silent rescaling; abort if the mix would clip the requested Vpp.
 #   - 'safe'  : apply one global scale factor to fit within Vpp (logs applied_scale_factor).
-amplitude_policy = 'safe'
+amplitude_policy = 'strict'
 
 # Conservative sigma multiplier used by optional clip predictor modes (kept for future use).
 clip_k_sigma = 6.0
@@ -107,7 +107,7 @@ sa_preamp_gain_db = 10      #dB set SA preamp gain.
 # segment_length_ms: length of each noise block (also used for mixed waveforms)
 # continuous_noise_streaming: if True, NoiseStreamer will continuously
 # regenerate noise segments on channels whose selector includes 'noise_*'.
-segment_length_ms = 50    # Default: 10 ms per noise segment
+segment_length_ms = 10    # Default: 10 ms per noise segment
 continuous_noise_streaming = False
 min_noise_segment_ms = 50          # enforce if any selector contains noise_
 noise_update_period_ms = 50        # streamer update cadence (ms)
@@ -120,7 +120,7 @@ noise_pink_amplitude = 0.5
 noise_brown_amplitude = 0.5
 
 # Calibrated white-noise density in V/sqrt(Hz). If None, disabled.
-noise_density_vrthz = 3e-7
+noise_density_vrthz = 3e-6
 noise_seed = 12345   # set None to disable deterministic noise
 
 # Noise Post Processing:
