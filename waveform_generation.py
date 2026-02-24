@@ -219,6 +219,16 @@ def _generate_noise_volts(selector: str, N: int, Fs: float, ch_index: int, seed=
         np.random.seed(int(seed))    
     if selector == "noise_white":
         y, meta = _white_noise_volts(N, Fs)
+        # sanity check: does generated waveform match requested density?
+        vrms = float(np.std(y))                # since mean~0
+        B = meta["noise_bw_hz_used"]
+        en_est = vrms / math.sqrt(B)
+
+        print("SW target en (V/rtHz):", meta["noise_density_vrthz"])
+        print("SW used B (Hz):", B)
+        print("SW sigma (V):", meta["noise_sigma_volts"])
+        print("SW measured Vrms (V):", vrms)
+        print("SW back-solved en (V/rtHz):", en_est)
     elif selector == "noise_pink":
         y = _generate_pink_noise(N) * USER_main.noise_pink_amplitude
         meta = {}
