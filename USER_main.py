@@ -44,7 +44,7 @@ sweep_current_freq = sweep_step_start
 #   - or any '+' combination, e.g. 'sine1+noise_white'
 #
 # NOTE: Channel-to-DAC mapping depends on generation_mode (see above).
-channel_1_output = 'noise_white'
+channel_1_output = 'sine1'
 channel_2_output = 'none'
 channel_3_output = 'none'
 channel_4_output = 'none'
@@ -89,9 +89,9 @@ save_data = False
 # 5) SPECTRUM ANALYZER SWEEP SETTINGS
 # ------------------------------------------------------------
 # Only used if use_spectrum_analyzer = True.
-min_freq = 1e6     # Hz
-max_freq = 100e6    # Hz
-rbw_hz    = 100e3      # SA resolution bandwidth (RBW) in Hz
+min_freq = 49.5e6     # Hz
+max_freq = 50.5e6    # Hz
+rbw_hz    = 10e3      # SA resolution bandwidth (RBW) in Hz
 sa_sweep_points = 1001      # Number of points per SA sweep
 sa_vbw_hz = 30e3
 
@@ -193,9 +193,9 @@ def sine_combination_waveform1():
 
     return {
         # signal definition (software, Volts)
-        'frequencies': [10.5e6],   # Hz (1 Hz to ~2*sample_rate)
+        'frequencies': [1e6],   # Hz (1 Hz to ~2*sample_rate)
         'phases':      [0],
-        'amplitudes':  [0.4],    # Vpk (-0.5 V to +0.5 V)
+        'amplitudes':  [0.2],    # Vpk (-0.5 V to +0.5 V)
         'offsets':     [0],
 
         # awg analog scaling (instrument state)
