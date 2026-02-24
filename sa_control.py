@@ -107,6 +107,14 @@ def configure_sa(sa, min_freq, max_freq, rbw_hz, vbw_hz=None, points=1001, detec
             pass
     else:
         sa.write(':AVERage:STATe OFF')
+
+    # DEBUG PRINTS 2-24-26
+    print("ATT:", sa.query(":INP:ATT?").strip())
+    print("ATT AUTO:", sa.query(":INP:ATT:AUTO?").strip())
+    print("RBW:", sa.query(":SENS:BAND:RES?").strip())
+    print("VBW:", sa.query(":SENS:BAND:VID?").strip())
+    print("DET:", sa.query(":SENS:DET:FUNC?").strip())
+    print("ERR:", sa.query(":SYST:ERR?").strip())
           
 
 
