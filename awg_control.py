@@ -86,40 +86,63 @@ def operation_mode(awg, mode: int):
 # ============================================================
 
 def _apply_awg_settings(awg, ch_num: int, awg_cfg: dict | None):
+    """
+    Apply per-channel output settings.
+
+    Behavior:
+    - If user does NOT provide an "offs" key at all -> force symmetric (TERM=0, OFFS=0)
+    - If user provides "offs" (including 0.0) -> use it as requested (do not auto-force TERM)
+    - Always writes OFFS explicitly (fixes previous bug)
+    """
     if not awg_cfg:
         return
 
-    vpp  = awg_cfg.get("vpp", 1.0)
-    offs = awg_cfg.get("offs", None)
+    # Pull values
+    vpp  = awg_cfg.get("vpp", None)
     load = awg_cfg.get("load", None)
 
-    # make sure output is ON
-    awg.write(f":OUTP{ch_num} ON")  # output subsystem exists :contentReference[oaicite:2]{index=2}
+    # Detect whether user explicitly set an offset key
+    user_set_offs_key = ("offs" in awg_cfg)
+    offs_val = awg_cfg.get("offs", None)
 
-    if vpp is not None:
-        awg.write(f":VOLT{ch_num} {float(vpp)}")          # Vpp amplitude :contentReference[oaicite:3]{index=3}
-    if offs is None:
-        _ensure_symmetric_mode(awg, ch_num)
+    # Turn output on first
+    awg.write(f":OUTP{ch_num} ON")
+
+    # If user did NOT specify offs at all, enforce symmetric around 0V.
+    # (This is the "auto symmetric mode" behavior you wanted.)
+    if not user_set_offs_key:
+        # Best-effort: these may error on some firmwares; we don't want to crash
+        _try_write(awg, f":VOLT{ch_num}:TERM 0")
+        _try_write(awg, f":VOLT{ch_num}:OFFS 0")
         offs_to_set = 0.0
     else:
-        offs_to_set_ = float(offs)
+        # User explicitly requested a DC offset (even 0.0)
+        offs_to_set = 0.0 if offs_val is None else float(offs_val)
+
+    # Apply amplitude (Vpp) if provided
+    if vpp is not None:
+        awg.write(f":VOLT{ch_num} {float(vpp)}")
+
+    # Always apply OFFS explicitly (this was missing/buggy before)
+    awg.write(f":VOLT{ch_num}:OFFS {offs_to_set}")
+
+    # Apply load if provided (firmware-dependent; try both)
     if load is not None:
-        # Try common command variants (firmware-dependent)
-        for cmd in (
-            f":OUTP{ch_num}:LOAD {load}",   # some Keysight generators
-            f":OUTP{ch_num}:IMP {load}",    # alternate name
-        ):
+        for cmd in (f":OUTP{ch_num}:LOAD {load}", f":OUTP{ch_num}:IMP {load}"):
             awg.write(cmd)
-            err = awg.query(":SYST:ERR?").strip()
-            if err.startswith("+0"):
+            if awg.query(":SYST:ERR?").strip().startswith("+0"):
                 break
 
+    # Debug / readback (keep your existing style)
     print("SYST:ERR?", awg.query("SYST:ERR?").strip())
-
     print("VOLT?", awg.query(f":VOLT{ch_num}?").strip())
     print("OFFS?", awg.query(f":VOLT{ch_num}:OFFS?").strip())
+    # TERM? may not exist on all firmwares; keep it best-effort
+    try:
+        print("TERM?", awg.query(f":VOLT{ch_num}:TERM?").strip())
+    except Exception:
+        pass
     print("ERR?",  awg.query(":SYST:ERR?").strip())
-
 
 def _upload_legacy_list(awg, mode: int, waveforms):
     """
