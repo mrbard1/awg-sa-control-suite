@@ -19,6 +19,21 @@ def _csv(arr: np.ndarray) -> str:
     return ','.join(arr.astype(str))
 
 
+def _try_write(awg, cmd: str) -> bool:
+    """Write SCPI command; return True if no instrument error."""
+    awg.write(cmd)
+    err = awg.query(":SYST:ERR?").strip()
+    return err.startswith("+0")
+
+def _ensure_symmetric_mode(awg, ch: int) -> None:
+    """
+    Force symmetric mode around 0 V if the AWG supports it.
+    On M8195A this typically means VTERM=0 and OFFS=0.
+    """
+    # Some firmwares use :VOLT{ch}:TERM, others may not support it.
+    _try_write(awg, f":VOLT{ch}:TERM 0")
+    _try_write(awg, f":VOLT{ch}:OFFS 0")
+
 def connect_awg(rm, address, timeout):
     """Open a VISA connection to the AWG and print identity."""
     awg = rm.open_resource(address)
@@ -74,7 +89,7 @@ def _apply_awg_settings(awg, ch_num: int, awg_cfg: dict | None):
     if not awg_cfg:
         return
 
-    vpp  = awg_cfg.get("vpp", None)
+    vpp  = awg_cfg.get("vpp", 1.0)
     offs = awg_cfg.get("offs", None)
     load = awg_cfg.get("load", None)
 
@@ -83,9 +98,11 @@ def _apply_awg_settings(awg, ch_num: int, awg_cfg: dict | None):
 
     if vpp is not None:
         awg.write(f":VOLT{ch_num} {float(vpp)}")          # Vpp amplitude :contentReference[oaicite:3]{index=3}
-    if offs is not None:
-        awg.write(f":VOLT{ch_num}:OFFS {float(offs)}")    # offset :contentReference[oaicite:4]{index=4}
-
+    if offs is None:
+        _ensure_symmetric_mode(awg, ch_num)
+        offs_to_set = 0.0
+    else:
+        offs_to_set_ = float(offs)
     if load is not None:
         # Try common command variants (firmware-dependent)
         for cmd in (
