@@ -76,6 +76,7 @@ def _apply_awg_settings(awg, ch_num: int, awg_cfg: dict | None):
 
     vpp  = awg_cfg.get("vpp", None)
     offs = awg_cfg.get("offs", None)
+    load = awg_cfg.get("load", None)
 
     # make sure output is ON
     awg.write(f":OUTP{ch_num} ON")  # output subsystem exists :contentReference[oaicite:2]{index=2}
@@ -84,6 +85,17 @@ def _apply_awg_settings(awg, ch_num: int, awg_cfg: dict | None):
         awg.write(f":VOLT{ch_num} {float(vpp)}")          # Vpp amplitude :contentReference[oaicite:3]{index=3}
     if offs is not None:
         awg.write(f":VOLT{ch_num}:OFFS {float(offs)}")    # offset :contentReference[oaicite:4]{index=4}
+
+    if load is not None:
+        # Try common command variants (firmware-dependent)
+        for cmd in (
+            f":OUTP{ch_num}:LOAD {load}",   # some Keysight generators
+            f":OUTP{ch_num}:IMP {load}",    # alternate name
+        ):
+            awg.write(cmd)
+            err = awg.query(":SYST:ERR?").strip()
+            if err.startswith("+0"):
+                break
 
     print("SYST:ERR?", awg.query("SYST:ERR?").strip())
 
