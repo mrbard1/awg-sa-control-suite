@@ -785,7 +785,9 @@ def generate_wave_bundle(
         peak_abs_volts2 = float(np.max(np.abs(wb.samples))) if wb.samples.size > 0 else 0.0
         wb.awg['peak_abs_volts_after'] = peak_abs_volts2
         wb.awg['peak_utilization_after'] = (peak_abs_volts2 / fullscale) if fullscale > 0 else float('inf')
-
+    # --- FINAL noise amplitude sanity (right before DAC quantization) ---
+    vrms_final = float(np.std(wb.samples))  # wb.samples are still VOLTS here
+    print(f"FINAL Vrms (V): {vrms_final:.6g}")
     wb.samples = final_dac_stage(_volts_to_norm(wb.samples, vpp))
     return wb
 
