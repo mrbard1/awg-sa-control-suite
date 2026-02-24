@@ -139,34 +139,7 @@ def _apply_awg_settings(awg, ch_num: int, awg_cfg: dict | None):
     print("OFFS?", awg.query(f":VOLT{ch_num}:OFFS?").strip())
     print("---- AWG OUTPUT STATE DEBUG ----")
 
-    def try_q(cmd: str):
-        try:
-            r = awg.query(cmd).strip()
-            print(f"{cmd} -> {r}")
-        except Exception as e:
-            print(f"{cmd} -> FAILED ({type(e).__name__})")
-        # also show instrument error queue after each attempt
-        try:
-            print("  SYST:ERR? ->", awg.query(":SYST:ERR?").strip())
-        except Exception:
-            pass
 
-    for cmd in [
-        ":OUTP1?",
-        ":OUTP1:STAT?",
-        ":OUTP1:LOAD?",
-        ":OUTP1:IMP?",
-        ":VOLT1?",
-        ":VOLT1:OFFS?",
-        ":VOLT1:TERM?",
-        ":SOUR1:VOLT?",
-        ":SOUR1:VOLT:AMPL?",
-        ":SOUR1:VOLT:OFFS?",
-        ":SOUR1:VOLT:TERM?",
-    ]:
-        try_q(cmd)
-
-    print("--------------------------------")
     # TERM? may not exist on all firmwares; keep it best-effort
     try:
         print("TERM?", awg.query(f":VOLT{ch_num}:TERM?").strip())
