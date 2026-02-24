@@ -137,6 +137,22 @@ def _apply_awg_settings(awg, ch_num: int, awg_cfg: dict | None):
     print("SYST:ERR?", awg.query("SYST:ERR?").strip())
     print("VOLT?", awg.query(f":VOLT{ch_num}?").strip())
     print("OFFS?", awg.query(f":VOLT{ch_num}:OFFS?").strip())
+    for cmd in [
+        ":OUTP1?",
+        ":OUTP1:STAT?",
+        ":OUTP1:ROUT?",          # routing / output path (if supported)
+        ":SOUR1:VOLT?",          # sometimes VOLT is under SOURce
+        ":SOUR1:VOLT:AMPL?",
+        ":SOUR1:VOLT:OFFS?",
+        ":SOUR1:VOLT:TERM?",
+        ":SOUR1:GAIN?",          # possible per-channel gain
+        ":SOUR1:FUNC?",          # mode
+        ":SYST:ERR?",
+    ]:
+        try:
+            print(cmd, awg.query(cmd).strip())
+        except Exception as e:
+            print(cmd, "FAILED", e)
     # TERM? may not exist on all firmwares; keep it best-effort
     try:
         print("TERM?", awg.query(f":VOLT{ch_num}:TERM?").strip())
