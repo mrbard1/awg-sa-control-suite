@@ -789,6 +789,12 @@ def generate_wave_bundle(
     vrms_final = float(np.std(wb.samples))  # wb.samples are still VOLTS here
     print(f"FINAL Vrms (V): {vrms_final:.6g}")
     wb.samples = final_dac_stage(_volts_to_norm(wb.samples, vpp))
+    codes = wb.samples.astype(np.float64)          # int8 codes
+    rms_codes = float(np.std(codes))
+    vrms_pred = (rms_codes / 127.0) * (vpp / 2.0)  # predicted analog Vrms if mapping is correct
+
+    print("RMS codes:", rms_codes)
+    print("Pred Vrms from codes:", vrms_pred)
     return wb
 
 
