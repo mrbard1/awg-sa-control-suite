@@ -44,7 +44,7 @@ sweep_current_freq = sweep_step_start
 #   - or any '+' combination, e.g. 'sine1+noise_white'
 #
 # NOTE: Channel-to-DAC mapping depends on generation_mode (see above).
-channel_1_output = 'sine1'
+channel_1_output = 'noise_white'
 channel_2_output = 'none'
 channel_3_output = 'none'
 channel_4_output = 'none'
@@ -200,7 +200,7 @@ def sine_combination_waveform1():
 
         # awg analog scaling (instrument state)
         "awg": {
-            "vpp": 3.0,
+            "vpp": 1.0,
             "offs": 0.0,
             "load": "50",      # "50" or "INF" (Hi-Z)
         }
