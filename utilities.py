@@ -162,8 +162,10 @@ def create_data_file(timestamp, mode, use_sa, use_osc):
     # SA columns
     if use_sa:
         cols += [
-            "FREQUENCY (Hz)", "POWER (dBm)", "POWER (dBm/Hz)",
+            "FREQUENCY (Hz)", "POWER_RAW (dBm)", "POWER (dBm)", "CORR_DB (dB)", "POWER (dBm/Hz)",
             "STEP_FREQUENCY (Hz)", "RBW (Hz)", "VBW (Hz)",
+            "OUTPUT_TOPOLOGY", "OUTPUT_LEG", "TOPOLOGY_GAIN_DB",
+            "COMBINER_ENABLED", "COMBINER_IL_DB", "CW_CAL_CSV", "IL_CSV",
             "TSEG (s)", "NOISE.UPDATE (s)",
             # ---- waveform metadata (repeated per SA point) ----
             "WAVE.CH (str)",

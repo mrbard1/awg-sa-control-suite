@@ -40,6 +40,26 @@ spectrum_analyzer:
   preamp_on: false
   preamp_gain_db: 10                # dB
 
+# Output/measurement calibration settings.
+# Convention: amp_vpk_cmd is always PER-LEG Vpk.
+# - single_leg: no topology gain.
+# - differential_combined: adds +6.0206 dB ideal topology gain, then subtracts combiner IL(f).
+calibration:
+  enabled: false
+  output_topology: single_leg             # single_leg | differential_combined
+  output_leg: DATA                        # DATA | DATA_BAR (required for single_leg)
+  cw_cal_csv_path: null                   # CSV columns: freq_hz, amp_vpk_cmd, corr_db
+  combiner:
+    enabled: false
+    il_csv_path: null                     # CSV columns: freq_hz, il_db
+
+  # Example CW cal CSV rows:
+  # freq_hz,amp_vpk_cmd,corr_db
+  # 49000000,0.10,-0.20
+  # 50000000,0.10,-0.15
+  # 50000000,0.20,-0.05
+  # 51000000,0.20,0.00
+
 
 oscilloscope:
   timebase_scale:

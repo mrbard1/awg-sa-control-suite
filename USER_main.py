@@ -343,9 +343,50 @@ def main():
     global sa_atten_db, sa_preamp_on, sa_vbw_hz, sa_preamp_gain_db
     sa_atten_db = defaults.get("spectrum_analyzer", {}).get("atten_db", sa_atten_db)
     sa_preamp_on = defaults.get("spectrum_analyzer", {}).get("preamp_on", sa_preamp_on)
-    sa_preamp_gain_db = float(defaults.get("spectrum analyzer", {}).get("preamp_gain_db", sa_preamp_gain_db))
+    sa_preamp_gain_db = float(defaults.get("spectrum_analyzer", {}).get("preamp_gain_db", sa_preamp_gain_db))
     sa_vbw_hz = defaults.get("spectrum_analyzer", {}).get("video_bandwidth", sa_vbw_hz)
 
+    # ---------------------
+    # Calibration/topology defaults
+    # ---------------------
+    cal_cfg = defaults.get("calibration", {}) or {}
+    cal_enabled = bool(cal_cfg.get("enabled", False))
+    output_topology = str(cal_cfg.get("output_topology", "single_leg")).strip().lower()
+    output_leg = str(cal_cfg.get("output_leg", "DATA")).strip().upper()
+    cw_cal_csv_path = cal_cfg.get("cw_cal_csv_path")
+    comb_cfg = cal_cfg.get("combiner", {}) or {}
+    combiner_enabled = bool(comb_cfg.get("enabled", False))
+    il_csv_path = comb_cfg.get("il_csv_path")
+
+    if output_topology not in ("single_leg", "differential_combined"):
+        raise ValueError("calibration.output_topology must be 'single_leg' or 'differential_combined'.")
+    if output_topology == "single_leg" and output_leg not in ("DATA", "DATA_BAR"):
+        raise ValueError("calibration.output_leg must be DATA or DATA_BAR when output_topology=single_leg.")
+
+    cw_table = None
+    il_table = None
+    if cal_enabled:
+        sa_control.run_calibration_self_checks()
+        if output_topology == "single_leg" and not cw_cal_csv_path:
+            raise ValueError("Calibration enabled for single_leg but cw_cal_csv_path is missing.")
+        if cw_cal_csv_path:
+            cw_table = sa_control.CwCalTable(cw_cal_csv_path)
+        if combiner_enabled:
+            if not il_csv_path:
+                raise ValueError("calibration.combiner.enabled=true but il_csv_path is missing.")
+            il_table = sa_control.CombinerILTable(il_csv_path)
+
+    topology_gain_db = (
+        sa_control.TOPOLOGY_GAIN_DB_DIFFERENTIAL
+        if (cal_enabled and output_topology == "differential_combined")
+        else 0.0
+    )
+    print(
+        "OUTPUT TOPOLOGY | "
+        f"{output_topology.upper()} | leg={output_leg} | "
+        f"cal_enabled={cal_enabled} | topology_gain_db={topology_gain_db:.4f} | "
+        f"combiner_enabled={combiner_enabled} | cw_cal_csv={cw_cal_csv_path} | il_csv={il_csv_path}"
+    )
 
     print("USING noise_density_vrthz =", noise_density_vrthz)
 
@@ -420,38 +461,56 @@ def main():
         print("LOG_SA writing step =", step_freq)
         sa_control.initial_sweep(sa, sweeps=(sa_avg_count if sa_avg_on else 1))
 
-        # requires sa_control.get_spectrum_data(sa, plot=False) -> (freq_hz, p_dbm)
-        
+        # Waveform metadata snapshot (also used to derive commanded per-leg Vpk for calibration)
+        active_key = None
+        for k in ("ch1", "ch2", "ch3", "ch4"):
+            if bundles.get(k) is not None:
+                active_key = k
+                break
+        wb = bundles.get(active_key) if active_key else None
+        wmeta = (wb.awg or {}) if wb is not None else {}
 
-        freq_hz, p_dbm, sa_settings = sa_control.get_spectrum_data(
+        amp_vpk_cmd = None
+        if wmeta.get("amp_vpk_cmd", None) is not None:
+            amp_vpk_cmd = float(wmeta.get("amp_vpk_cmd"))
+        elif wmeta.get("vpp", None) is not None:
+            amp_vpk_cmd = 0.5 * float(wmeta.get("vpp"))
+
+        measurement_cal = None
+        if cal_enabled:
+            measurement_cal = sa_control.MeasurementCalibration(
+                output_topology=output_topology,
+                output_leg=output_leg,
+                amp_vpk_cmd=amp_vpk_cmd,
+                cw_table=cw_table,
+                combiner_enabled=combiner_enabled,
+                il_table=il_table,
+                cw_cal_csv_path=cw_cal_csv_path,
+                il_csv_path=il_csv_path,
+            )
+
+        freq_hz, p_dbm_raw, p_dbm, sa_settings = sa_control.get_spectrum_data(
             sa,
             plot=True,
             plot_psd=True,
             plot_both=True,
-            preamp_gain_db=sa_preamp_gain_db
+            preamp_gain_db=sa_preamp_gain_db,
+            measurement_cal=measurement_cal,
+            return_raw_and_corrected=True,
         )
         print(
             f"SA VERIFY | RBW={sa_settings.get('rbw_hz')} Hz | "
             f"VBW={sa_settings.get('vbw_hz')} Hz | "
             f"ATTEN={sa_settings.get('atten_db')} dB | "
             f"PREAMP={sa_settings.get('preamp_state')} | "
-            f"REF={sa_settings.get('ref_level_dbm')} dBm"
+            f"REF={sa_settings.get('ref_level_dbm')} dBm | "
+            f"TOPOLOGY={output_topology.upper()}({output_leg}) | "
+            f"TOPOLOGY_GAIN={topology_gain_db:.4f} dB | "
+            f"CAL_MEAN={sa_settings.get('cal_corr_db_mean', 0.0):.4f} dB"
         )
         
         rbw_hz = sa_settings.get("rbw_hz", np.nan)
         vbw_hz = sa_settings.get("vbw_hz", np.nan)
-
-        # -----------------------------
-        # Waveform metadata snapshot
-        # -----------------------------
-        active_key = None
-        for k in ("ch1", "ch2", "ch3", "ch4"):
-            if bundles.get(k) is not None:
-                active_key = k
-                break
-
-        wb = bundles.get(active_key) if active_key else None
-        wmeta = (wb.awg or {}) if wb is not None else {}
 
         wave_ch = active_key if active_key else ""
         awg_vpp = float(wmeta.get("vpp", np.nan)) if wmeta.get("vpp", None) is not None else np.nan
@@ -479,13 +538,22 @@ def main():
 
         rows = [{
             "FREQUENCY (Hz)": float(ff),
+            "POWER_RAW (dBm)": float(pp_raw),
             "POWER (dBm)": float(pp),
+            "CORR_DB (dB)": float(pp - pp_raw),
             "PREAMP.ON": int(bool(sa_settings.get("preamp_on", False))),
             "PREAMP.GAIN_DB": float(sa_settings.get("preamp_gain_db", 0.0) or 0.0),
             "POWER (dBm/Hz)": (float(pp) - 10.0 * np.log10(float(rbw_hz)) - float(sa_settings.get("preamp_gain_db", 0.0) or 0.0)) if (rbw_hz is not None and np.isfinite(rbw_hz) and float(rbw_hz) > 0) else np.nan,
             "STEP_FREQUENCY (Hz)": (float(step_freq) if step_freq is not None else np.nan),
             "RBW (Hz)": float(rbw_hz) if rbw_hz is not None else np.nan,
             "VBW (Hz)": float(vbw_hz) if vbw_hz is not None else np.nan,
+            "OUTPUT_TOPOLOGY": output_topology.upper(),
+            "OUTPUT_LEG": output_leg,
+            "TOPOLOGY_GAIN_DB": float(topology_gain_db),
+            "COMBINER_ENABLED": int(combiner_enabled),
+            "COMBINER_IL_DB": (float(il_table.il_db(ff)) if (cal_enabled and combiner_enabled and il_table is not None) else np.nan),
+            "CW_CAL_CSV": str(cw_cal_csv_path) if cw_cal_csv_path else "",
+            "IL_CSV": str(il_csv_path) if il_csv_path else "",
             "TSEG (s)": tseg_s,
             "NOISE.UPDATE (s)": update_s,            
             "WAVE.CH (str)": wave_ch,
@@ -503,7 +571,7 @@ def main():
             "CLIP.PRED (bool)": clip_pred,
 
 
-        } for ff, pp in zip(freq_hz, p_dbm)]
+        } for ff, pp_raw, pp in zip(freq_hz, p_dbm_raw, p_dbm)]
         utilities.append_rows(file_path, rows)
 
         
