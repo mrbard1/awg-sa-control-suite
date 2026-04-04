@@ -11,170 +11,123 @@ import noise_streaming
 
 
 # ============================================================
-# USER CONFIGURATION SECTION
+# CONFIG LOADING / COMPATIBILITY BRIDGE
 # ============================================================
-
-# 1) AWG GENERATION MODE & ROUTING
-# ------------------------------------------------------------
-# Possible modes:
-#   1: Single channel (Ch.1)
-#   2: Single channel with markers (Ch.1)
-#   3: Dual channel (Ch.1 and Ch.4)
-#   4: Dual channel duplicate (Ch.1 = Ch.3, Ch.2 = Ch.4)
-#   5: Dual channel with markers (Ch.1 and Ch.2)
-#   6: Four channel (Ch.1, Ch.2, Ch.3, and Ch.4)
-generation_mode = 1
-
-sweep_step_enable = False
-sweep_step_start = 5e9
-sweep_step_stop  = 12e9
-sweep_step_count = 15
-sweep_current_freq = sweep_step_start
+_RUNTIME_CONFIG = None
+noise_seed_current = None
+sweep_current_freq = 0.0
 
 
-
-# 2) WAVEFORM SELECTION PER CHANNEL
-# ------------------------------------------------------------
-# These strings control what appears on each channel.
-# Options include:
-#   - 'none'
-#   - 'sine1', 'sine2', 'sine3', 'sine4'
-#   - 'func1', 'func2', 'func3', 'func4'
-#   - 'noise_white', 'noise_pink', 'noise_brown'
-#   - or any '+' combination, e.g. 'sine1+noise_white'
-#
-# NOTE: Channel-to-DAC mapping depends on generation_mode (see above).
-channel_1_output = 'noise_white'
-channel_2_output = 'none'
-channel_3_output = 'none'
-channel_4_output = 'none'
-
-# Default AWG analog scaling used when a waveform selector does NOT define its own "awg" dict
-# (e.g., noise_white/noise_pink/noise_brown).
-default_awg = {
-    "vpp": 1.0,     # <-- change this to whatever you want (e.g. 2.0, 3.0, etc.)
-    "offs": 0.0,
-    "load": "50",   # "50" or "INF"
-}
-
-component_gains = {
-    "sine1": 1.0,
-    "noise_white": 1.0,
-}
-mix_headroom = 1.0
-# Amplitude policy:
-#   - 'strict': no silent rescaling; abort if the mix would clip the requested Vpp.
-#   - 'safe'  : apply one global scale factor to fit within Vpp (logs applied_scale_factor).
-amplitude_policy = 'strict'
-
-# Conservative sigma multiplier used by optional clip predictor modes (kept for future use).
-clip_k_sigma = 6.0
+def _channel_map(cfg, default):
+    out = {}
+    cfg = cfg or {}
+    for ch in (1, 2, 3, 4):
+        out[ch] = cfg.get(ch, cfg.get(str(ch), default))
+    return out
 
 
-# 3) INSTRUMENT USAGE FLAGS
-# ------------------------------------------------------------
-# AWG is always used. Enable/disable measurement instruments here.
-use_spectrum_analyzer = True
-use_oscilloscope = True
+def _apply_runtime_config(config):
+    """
+    Populate module globals from config.yaml so legacy modules that import
+    USER_main continue to see the same names after the control surface move.
+    """
+    run_cfg = config.get("run", {}) or {}
+    routing_cfg = run_cfg.get("routing", {}) or {}
+    sweep_cfg = run_cfg.get("sweep_step", {}) or {}
+
+    waveform_cfg = config.get("waveform", {}) or {}
+    noise_cfg = waveform_cfg.get("noise", {}) or {}
+    streaming_cfg = waveform_cfg.get("streaming", {}) or {}
+
+    measurements_cfg = config.get("measurements", {}) or {}
+    sa_cfg = config.get("spectrum_analyzer", {}) or {}
+    osc_cfg = config.get("oscilloscope", {}) or {}
+
+    current_noise_seed = globals().get("noise_seed_current", None)
+    current_sweep_freq = globals().get("sweep_current_freq", None)
+
+    compat_globals = {
+        "generation_mode": int(run_cfg.get("generation_mode", 1)),
+        "sweep_step_enable": bool(sweep_cfg.get("enable", False)),
+        "sweep_step_start": float(sweep_cfg.get("start_hz", 0.0)),
+        "sweep_step_stop": float(sweep_cfg.get("stop_hz", 0.0)),
+        "sweep_step_count": int(sweep_cfg.get("count", 1)),
+        "channel_1_output": str(routing_cfg.get("channel_1_output", "none")),
+        "channel_2_output": str(routing_cfg.get("channel_2_output", "none")),
+        "channel_3_output": str(routing_cfg.get("channel_3_output", "none")),
+        "channel_4_output": str(routing_cfg.get("channel_4_output", "none")),
+        "use_spectrum_analyzer": bool(measurements_cfg.get("use_spectrum_analyzer", True)),
+        "use_oscilloscope": bool(measurements_cfg.get("use_oscilloscope", False)),
+        "preview_waveform": bool(run_cfg.get("preview_waveform", False)),
+        "save_data": bool(run_cfg.get("save_data", False)),
+        "default_awg": dict(waveform_cfg.get("default_awg", {}) or {}),
+        "component_gains": dict(waveform_cfg.get("component_gains", {}) or {}),
+        "mix_headroom": float(waveform_cfg.get("mix_headroom", 1.0)),
+        "amplitude_policy": str(waveform_cfg.get("amplitude_policy", "strict")),
+        "clip_k_sigma": float(waveform_cfg.get("clip_k_sigma", 6.0)),
+        "segment_length_ms": int(streaming_cfg.get("segment_length_ms", 10)),
+        "continuous_noise_streaming": bool(streaming_cfg.get("continuous_noise_streaming", False)),
+        "min_noise_segment_ms": int(streaming_cfg.get("min_noise_segment_ms", 50)),
+        "noise_update_period_ms": int(streaming_cfg.get("noise_update_period_ms", 50)),
+        "noise_fade_fraction": float(noise_cfg.get("fade_fraction", 0.0)),
+        "noise_white_amplitude": float(noise_cfg.get("white_amplitude", 0.0)),
+        "noise_pink_amplitude": float(noise_cfg.get("pink_amplitude", 0.0)),
+        "noise_brown_amplitude": float(noise_cfg.get("brown_amplitude", 0.0)),
+        "noise_density_vrthz": noise_cfg.get("density_vrthz"),
+        "noise_bw_hz": noise_cfg.get("bandwidth_hz"),
+        "noise_seed": noise_cfg.get("seed"),
+        "noise_post_process_mode_ch": _channel_map(noise_cfg.get("post_process_mode_ch", {}), "none"),
+        "noise_soft_clip_strength_ch": _channel_map(noise_cfg.get("soft_clip_strength_ch", {}), 2.0),
+        "min_freq": float(sa_cfg.get("min_freq_hz", 0.0)),
+        "max_freq": float(sa_cfg.get("max_freq_hz", 0.0)),
+        "rbw_hz": float(sa_cfg.get("rbw_hz", 0.0)),
+        "sa_sweep_points": int(sa_cfg.get("sweep_points", 1001)),
+        "sa_vbw_hz": sa_cfg.get("vbw_hz"),
+        "sa_detector": str(sa_cfg.get("detector", "RMS")),
+        "sa_avg_on": bool(sa_cfg.get("avg_on", False)),
+        "sa_avg_count": int(sa_cfg.get("avg_count", 1)),
+        "sa_atten_db": float(sa_cfg.get("atten_db", 0.0)),
+        "sa_preamp_on": bool(sa_cfg.get("preamp_on", False)),
+        "sa_preamp_gain_db": float(sa_cfg.get("preamp_gain_db", 0.0)),
+        "osc_time_scale": float(osc_cfg.get("time_scale", 1e-3)),
+        "osc_time_position": float(osc_cfg.get("time_position", 0.0)),
+        "osc_ch1_scale": float(osc_cfg.get("ch1_scale", 0.2)),
+        "osc_ch2_scale": float(osc_cfg.get("ch2_scale", 0.2)),
+        "osc_ch3_scale": float(osc_cfg.get("ch3_scale", 0.2)),
+        "osc_ch4_scale": float(osc_cfg.get("ch4_scale", 0.2)),
+        "osc_ch1_on": bool(osc_cfg.get("ch1_on", True)),
+        "osc_ch2_on": bool(osc_cfg.get("ch2_on", False)),
+        "osc_ch3_on": bool(osc_cfg.get("ch3_on", False)),
+        "osc_ch4_on": bool(osc_cfg.get("ch4_on", False)),
+        "osc_coupling_mode": str(osc_cfg.get("coupling_mode", "DC")),
+        "osc_acquire_type": str(osc_cfg.get("acquire_type", "AVER")),
+        "osc_acquire_count": int(osc_cfg.get("acquire_count", 16)),
+        "osc_trigger_source": str(osc_cfg.get("trigger_source", "CHAN1")),
+        "osc_trigger_level": float(osc_cfg.get("trigger_level", 0.0)),
+        "osc_trigger_slope": str(osc_cfg.get("trigger_slope", "POS")),
+        "osc_persistence": str(osc_cfg.get("persistence", "OFF")),
+        "osc_grid": str(osc_cfg.get("grid", "FULL")),
+    }
+
+    globals().update(compat_globals)
+    globals()["noise_seed_current"] = current_noise_seed
+    globals()["sweep_current_freq"] = (
+        float(current_sweep_freq)
+        if current_sweep_freq is not None
+        else float(compat_globals["sweep_step_start"])
+    )
 
 
-# 4) PREVIEW & DATA LOGGING
-# ------------------------------------------------------------
-# preview_waveform: show matplotlib preview of generated waveform(s)
-# save_data: create an empty .dat file with appropriate columns.
-preview_waveform = True
-save_data = False
+def load_runtime_config(force_reload=False):
+    global _RUNTIME_CONFIG
+    if force_reload or _RUNTIME_CONFIG is None:
+        _RUNTIME_CONFIG = utilities.load_defaults()
+        _apply_runtime_config(_RUNTIME_CONFIG)
+    return _RUNTIME_CONFIG
 
 
-# 5) SPECTRUM ANALYZER SWEEP SETTINGS
-# ------------------------------------------------------------
-# Only used if use_spectrum_analyzer = True.
-min_freq = 49.5e6     # Hz
-max_freq = 50.5e6    # Hz
-rbw_hz    = 10e3      # SA resolution bandwidth (RBW) in Hz
-sa_sweep_points = 1001      # Number of points per SA sweep
-sa_vbw_hz = 30e3
-
-sa_detector = "RMS"      # "RMS" or "AVERage" depending on SA support
-sa_avg_on   = True       # enable SA trace averaging
-sa_avg_count = 20        # number of sweeps to average
-sa_atten_db = 0
-sa_preamp_on = True
-sa_preamp_gain_db = 10      #dB set SA preamp gain.
-
-# 6) NOISE / STREAMING SETTINGS
-# ------------------------------------------------------------
-# segment_length_ms: length of each noise block (also used for mixed waveforms)
-# continuous_noise_streaming: if True, NoiseStreamer will continuously
-# regenerate noise segments on channels whose selector includes 'noise_*'.
-segment_length_ms = 10    # Default: 10 ms per noise segment
-continuous_noise_streaming = False
-min_noise_segment_ms = 50          # enforce if any selector contains noise_
-noise_update_period_ms = 50        # streamer update cadence (ms)
-
-
-noise_fade_fraction = 0.0
-
-noise_white_amplitude = 0.01 # 0.0 to 1.0 recommended (scaling of noise)
-noise_pink_amplitude = 0.5
-noise_brown_amplitude = 0.5
-
-# Calibrated white-noise density in V/sqrt(Hz). If None, disabled.
-noise_density_vrthz = 1.5e-6
-noise_bw_hz = None  # Effective noise bandwidth in Hz; None uses min(Fs/2, 200e6)
-noise_seed = 12345   # set None to disable deterministic noise
-
-# Noise Post Processing:
-noise_post_process_mode_ch = {
-    1: "none",
-    2: "none",
-    3: "none",
-    4: "none",
-}
-
-noise_soft_clip_strength_ch = {
-    1: 0.0,
-    2: 2.0,
-    3: 3.0,
-    4: 2.0,
-}
-
-
-
-# 7) OSCILLOSCOPE SETTINGS
-# ------------------------------------------------------------
-
-# Horizontal (time base)
-osc_time_scale = 1e-3       # seconds/div (default: 1 ms/div)
-osc_time_position = 0       # horizontal position (0 = center)
-
-# Vertical scale per channel
-osc_ch1_scale = 0.2         # volts/div
-osc_ch2_scale = 0.2         # volts/div
-osc_ch3_scale = 0.2
-osc_ch4_scale = 0.2
-
-# Channel enable/disable
-osc_ch1_on = True
-osc_ch2_on = False
-osc_ch3_on = False
-osc_ch4_on = False
-
-# Coupling mode options: AC, DC, GND
-osc_coupling_mode = "DC"    # applied to all enabled channels
-
-# Acquisition mode
-osc_acquire_type = "AVER"   # NORM, AVER, HRES
-osc_acquire_count = 16      # averaging count if AVER mode
-
-# Trigger settings
-osc_trigger_source = "CHAN1"
-osc_trigger_level = 0.0     # volts
-osc_trigger_slope = "POS"   # POS or NEG
-
-# Display settings
-osc_persistence = "OFF"     # OFF, SHORT, MEDIUM, LONG, INF
-osc_grid = "FULL"           # FULL, HALF, NONE
+# Load config at import time so dependent modules can safely read legacy globals.
+load_runtime_config(force_reload=True)
 
 
 # ============================================================
@@ -297,10 +250,12 @@ def user_waveform4():
 # ============================================================
 
 def main():
-    # Load defaults and user input
+    # Reload config at runtime and refresh compatibility globals before any dependent logic runs.
     global segment_length_ms
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H;%M;%S")
-    defaults = utilities.load_defaults()
+    defaults = load_runtime_config(force_reload=True)
+    globals()["noise_seed_current"] = None
+    globals()["sweep_current_freq"] = sweep_step_start
 
     # ALWAYS create a data file (per your request)
     file_path = utilities.create_data_file(
@@ -327,24 +282,6 @@ def main():
     dac_rate = defaults['waveform']['sample_rate']
     sample_rate = dac_rate / srd
     granularity = 256 // srd
-
-    global noise_density_vrthz
-    noise_density_vrthz = defaults.get("waveform", {}).get("noise_density_vrthz", noise_density_vrthz)
-    global noise_bw_hz
-    noise_bw_hz = defaults.get("waveform", {}).get("noise_bw_hz", noise_bw_hz)
-    global noise_seed
-    noise_seed = defaults.get("waveform", {}).get("noise_seed", noise_seed)
-    
-    global sa_detector, sa_avg_on, sa_avg_count
-    sa_detector = defaults.get("spectrum_analyzer", {}).get("detector", sa_detector)
-    sa_avg_on = defaults.get("spectrum_analyzer", {}).get("avg_on", sa_avg_on)
-    sa_avg_count = defaults.get("spectrum_analyzer", {}).get("avg_count", sa_avg_count)
-
-    global sa_atten_db, sa_preamp_on, sa_vbw_hz, sa_preamp_gain_db
-    sa_atten_db = defaults.get("spectrum_analyzer", {}).get("atten_db", sa_atten_db)
-    sa_preamp_on = defaults.get("spectrum_analyzer", {}).get("preamp_on", sa_preamp_on)
-    sa_preamp_gain_db = float(defaults.get("spectrum_analyzer", {}).get("preamp_gain_db", sa_preamp_gain_db))
-    sa_vbw_hz = defaults.get("spectrum_analyzer", {}).get("video_bandwidth", sa_vbw_hz)
 
     # ---------------------
     # Calibration/topology defaults
@@ -419,7 +356,19 @@ def main():
             defaults['instruments']['spectrum_analyzer']['address'],
             defaults['instruments']['spectrum_analyzer']['timeout'],
         )
-        sa_control.configure_sa(sa, min_freq, max_freq, rbw_hz=rbw_hz, vbw_hz=sa_vbw_hz, points=sa_sweep_points, detector=sa_detector, avg_on=sa_avg_on, avg_count=sa_avg_count, atten_db=sa_atten_db, preamp_on=sa_preamp_on)
+        sa_control.configure_sa(
+            sa,
+            min_freq,
+            max_freq,
+            rbw_hz=rbw_hz,
+            vbw_hz=sa_vbw_hz,
+            points=sa_sweep_points,
+            detector=sa_detector,
+            avg_on=sa_avg_on,
+            avg_count=sa_avg_count,
+            atten_db=sa_atten_db,
+            preamp_on=sa_preamp_on,
+        )
 
 
     osc = None

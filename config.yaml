@@ -1,72 +1,119 @@
-# Default configuration for AWG, spectrum analyzer, oscilloscope, and waveform settings
+# Centralized runtime control surface for the automation suite.
+# USER_main.py now keeps waveform definitions and orchestration, while
+# non-waveform controls live here and are bridged back into USER_main globals
+# for compatibility with existing modules.
 
 instruments:
   awg:
-    address: 'TCPIP0::localhost::hislip0::INSTR'        # LAN from M8195 Soft Front Panel
-    timeout: 240000                                      # ms
+    address: "TCPIP0::localhost::hislip0::INSTR"
+    timeout: 240000
   spectrum_analyzer:
-    address: 'TCPIP0::10.164.17.219::hislip0::INSTR'    # LAN from Keysight Connection Expert
-    timeout: 2400000                                     # ms
+    address: "TCPIP0::10.164.17.219::hislip0::INSTR"
+    timeout: 2400000
   oscilloscope:
-    address: 'TCPIP0::169.254.7.103::inst0::INSTR'
-    timeout: 10000                                      # ms
+    address: "TCPIP0::169.254.7.103::inst0::INSTR"
+    timeout: 10000
+
+run:
+  generation_mode: 1
+  preview_waveform: true
+  save_data: false
+  routing:
+    channel_1_output: "noise_white"
+    channel_2_output: "none"
+    channel_3_output: "none"
+    channel_4_output: "none"
+  sweep_step:
+    enable: false
+    start_hz: 5.0e9
+    stop_hz: 12.0e9
+    count: 15
+
+measurements:
+  use_spectrum_analyzer: true
+  use_oscilloscope: true
 
 waveform:
-  sample_rate: 64000000000                               # in Sa/s for AWG
+  sample_rate: 64000000000
   num_periods: 1
-  amplitude: 2.0                                         # Vpp
-  dc_offset: 0                                           # V
-  noise_density_vrthz: 1.5e-6                                  # V/sqrt(Hz); null disables
-  noise_bw_hz: 200e6                                      # Effective noise bandwidth (Hz); null -> min(Fs/2, 200e6)
-  amplitude_policy: strict                           # strict|safe
-  clip_k_sigma: 6.0                                  # used for conservative clip prediction
-  min_noise_segment_ms: 50            # enforce longer segments when noise_* present
-  noise_update_period_ms: 50          # how often NoiseStreamer updates segments
-  noise_seed: 12345                 # null disables deterministic noise
-
-
-
+  amplitude: 2.0
+  dc_offset: 0.0
+  default_awg:
+    vpp: 1.0
+    offs: 0.0
+    load: "50"
+  component_gains:
+    sine1: 1.0
+    noise_white: 1.0
+  mix_headroom: 1.0
+  amplitude_policy: "strict"
+  clip_k_sigma: 6.0
+  noise:
+    fade_fraction: 0.0
+    white_amplitude: 0.01
+    pink_amplitude: 0.5
+    brown_amplitude: 0.5
+    density_vrthz: 1.5e-6
+    bandwidth_hz: 200.0e6
+    seed: 12345
+    post_process_mode_ch:
+      1: "none"
+      2: "none"
+      3: "none"
+      4: "none"
+    soft_clip_strength_ch:
+      1: 0.0
+      2: 2.0
+      3: 3.0
+      4: 2.0
+  streaming:
+    segment_length_ms: 10
+    continuous_noise_streaming: false
+    min_noise_segment_ms: 50
+    noise_update_period_ms: 50
 
 spectrum_analyzer:
-  center_frequency:
-  span:
-  averaging: 1
-  resolution_bandwidth:
-  video_bandwidth: null
-  detector: RMS
+  min_freq_hz: 49.5e6
+  max_freq_hz: 50.5e6
+  rbw_hz: 10.0e3
+  sweep_points: 1001
+  vbw_hz: 30.0e3
+  detector: "RMS"
   avg_on: true
   avg_count: 20
-  atten_db: 0
-  preamp_on: false
-  preamp_gain_db: 10                # dB
-
-# Output/measurement calibration settings.
-# Convention: amp_vpk_cmd is always PER-LEG Vpk.
-# - single_leg: no topology gain.
-# - differential_combined: adds +6.0206 dB ideal topology gain, then subtracts combiner IL(f).
-calibration:
-  enabled: false
-  output_topology: single_leg             # single_leg | differential_combined
-  output_leg: DATA                        # DATA | DATA_BAR (required for single_leg)
-  cw_cal_csv_path: null                   # CSV columns: freq_hz, amp_vpk_cmd, corr_db
-  combiner:
-    enabled: false
-    il_csv_path: null                     # CSV columns: freq_hz, il_db
-
-  # Example CW cal CSV rows:
-  # freq_hz,amp_vpk_cmd,corr_db
-  # 49000000,0.10,-0.20
-  # 50000000,0.10,-0.15
-  # 50000000,0.20,-0.05
-  # 51000000,0.20,0.00
-
+  atten_db: 0.0
+  preamp_on: true
+  preamp_gain_db: 10.0
 
 oscilloscope:
-  timebase_scale:
-  vertical_scale:
-  trigger_mode:
+  time_scale: 1.0e-3
+  time_position: 0.0
+  ch1_scale: 0.2
+  ch2_scale: 0.2
+  ch3_scale: 0.2
+  ch4_scale: 0.2
+  ch1_on: true
+  ch2_on: false
+  ch3_on: false
+  ch4_on: false
+  coupling_mode: "DC"
+  acquire_type: "AVER"
+  acquire_count: 16
+  trigger_source: "CHAN1"
+  trigger_level: 0.0
+  trigger_slope: "POS"
+  persistence: "OFF"
+  grid: "FULL"
 
+calibration:
+  enabled: false
+  output_topology: "single_leg"
+  output_leg: "DATA"
+  cw_cal_csv_path: null
+  combiner:
+    enabled: false
+    il_csv_path: null
 
 logging:
-  file:
-  level:
+  file: null
+  level: null
